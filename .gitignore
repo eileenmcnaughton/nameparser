@@ -13,3 +13,4 @@ phpunit.xml
 
 # codesage local index + review state (machine-specific, not shipped)
 /.codesage/
+.plan/

@@ -40,7 +40,7 @@ class SalutationMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
-        $max = ($this->maxIndex > 0) ? min($this->maxIndex, count($parts)) : intdiv(count($parts), 2);
+        $max = ($this->maxIndex > 0) ? min($this->maxIndex, count($parts)) : max(1, intdiv(count($parts), 2));
 
         // count($parts) is re-checked each step: a multi-word match in
         // substituteWithSalutation() splices several tokens into one, shrinking

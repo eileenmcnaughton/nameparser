@@ -39,6 +39,7 @@ class English implements LanguageInterface
         'esq' => 'Esq',
         'esquire' => 'Esquire',
         'jr' => 'Jr',
+        'jd' => 'JD',
         'junior' => 'Junior',
         'lcsw' => 'LCSW',
         'ma' => 'MA',

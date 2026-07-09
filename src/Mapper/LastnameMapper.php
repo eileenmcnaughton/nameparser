@@ -20,6 +20,7 @@ class LastnameMapper extends AbstractMapper
     public function __construct(
         protected array $prefixes,
         protected bool $matchSinglePart = false,
+        protected bool $surnameOnly = false,
     ) {}
 
     /**
@@ -45,7 +46,12 @@ class LastnameMapper extends AbstractMapper
      */
     protected function mapParts(array $parts): array
     {
-        $k = $this->skipIgnoredParts($parts) + 1;
+        $k = $this->skipIgnoredParts($parts);
+        if (! $this->matchSinglePart && $k < 1) {
+            return $parts;
+        }
+
+        $k++;
         $remapIgnored = true;
 
         while (--$k >= 0) {
@@ -146,6 +152,10 @@ class LastnameMapper extends AbstractMapper
      */
     protected function shouldStopMapping(array $parts, int $k): bool
     {
+        if ($this->surnameOnly) {
+            return false;
+        }
+
         if ($k < 1) {
             return true;
         }
@@ -156,7 +166,13 @@ class LastnameMapper extends AbstractMapper
             return true;
         }
 
-        return $lastPart instanceof AbstractPart && strlen($lastPart->getValue()) >= 3;
+        if (! $lastPart instanceof AbstractPart) {
+            return false;
+        }
+
+        $length = mb_strlen($lastPart->getValue(), 'UTF-8');
+
+        return $length === 1 || $length >= 3;
     }
 
     /**
@@ -185,6 +201,10 @@ class LastnameMapper extends AbstractMapper
 
             if (! $this->isIgnoredPart($part)) {
                 break;
+            }
+
+            if ($part instanceof Suffix) {
+                continue;
             }
 
             $parts[$k] = new Lastname($part);

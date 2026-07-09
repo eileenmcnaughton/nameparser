@@ -2,6 +2,7 @@
 
 namespace Tests\Iliaal\NameParser;
 
+use Iliaal\NameParser\Language\English;
 use Iliaal\NameParser\Language\German;
 use Iliaal\NameParser\Name;
 use Iliaal\NameParser\Parser;
@@ -63,5 +64,24 @@ class GermanParserTest extends TestCase
 
         $this->assertInstanceOf(Name::class, $name);
         $this->assertEquals($expectation, $name->getAll());
+    }
+
+    public function testLanguageOrderIsFirstWins(): void
+    {
+        $germanFirst = new Parser([new German(), new English()]);
+        $englishFirst = new Parser([new English(), new German()]);
+
+        $this->assertSame('Frau', $germanFirst->parse('Fr. Charlotte Stein')->getSalutation());
+        $this->assertSame('Fr.', $englishFirst->parse('Fr. Charlotte Stein')->getSalutation());
+    }
+
+    public function testEnglishCanBeComposedWithGermanForProfessionalCredentials(): void
+    {
+        $name = (new Parser([new English(), new German()]))->parse('Herr Hans Schmidt MD');
+
+        $this->assertSame('Herr', $name->getSalutation());
+        $this->assertSame('Hans', $name->getFirstname());
+        $this->assertSame('Schmidt', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
     }
 }

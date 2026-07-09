@@ -10,6 +10,7 @@ use Iliaal\NameParser\Mapper\MiddlenameMapper;
 use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
+use Iliaal\NameParser\Part\GivenNamePart;
 
 class Parser
 {
@@ -19,6 +20,8 @@ class Parser
      * @var array<int, \Iliaal\NameParser\Mapper\AbstractMapper>
      */
     protected array $mappers = [];
+
+    protected bool $customMappers = false;
 
     /**
      * @var array<int, LanguageInterface>
@@ -70,6 +73,8 @@ class Parser
      * on every row
      */
     private ?Parser $firstSegmentParser = null;
+
+    private ?Parser $surnameSegmentParser = null;
 
     private ?Parser $secondSegmentParser = null;
 
@@ -135,12 +140,28 @@ class Parser
      */
     protected function parseSplitName(string $surname, string $given): Name
     {
+        $givenName = $this->getSecondSegmentParser()->parse($given);
+        $surnameParser = $this->hasGivenNameParts($givenName)
+            ? $this->getSurnameSegmentParser()
+            : $this->getFirstSegmentParser();
+
         $parts = array_merge(
-            $this->getFirstSegmentParser()->parse($surname)->getParts(),
-            $this->getSecondSegmentParser()->parse($given)->getParts(),
+            $surnameParser->parse($surname)->getParts(),
+            $givenName->getParts(),
         );
 
         return new Name($parts);
+    }
+
+    protected function hasGivenNameParts(Name $name): bool
+    {
+        foreach ($name->getParts() as $part) {
+            if ($part instanceof GivenNamePart && $part->normalize() !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected function getFirstSegmentParser(): Parser
@@ -151,6 +172,15 @@ class Parser
             new LastnameMapper($this->getPrefixes(), true),
             new FirstnameMapper(),
             new MiddlenameMapper(false, $this->getPrefixes()),
+        ]);
+    }
+
+    protected function getSurnameSegmentParser(): Parser
+    {
+        return $this->surnameSegmentParser ??= (new Parser())->setMappers([
+            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
+            new SuffixMapper($this->getSuffixes(), false, 1),
+            new LastnameMapper($this->getPrefixes(), true, true),
         ]);
     }
 
@@ -173,16 +203,16 @@ class Parser
      */
     public function getMappers(): array
     {
-        if (empty($this->mappers)) {
-            $this->setMappers([
-                new NicknameMapper($this->getNicknameDelimiters()),
+        if (! $this->customMappers && empty($this->mappers)) {
+            $this->mappers = [
                 new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
                 new SuffixMapper($this->getSuffixes()),
+                new NicknameMapper($this->getNicknameDelimiters()),
                 new InitialMapper($this->getMaxCombinedInitials()),
                 new LastnameMapper($this->getPrefixes()),
                 new FirstnameMapper(),
                 new MiddlenameMapper(false, $this->getPrefixes()),
-            ]);
+            ];
         }
 
         return $this->mappers;
@@ -202,6 +232,7 @@ class Parser
     public function setMappers(array $mappers): Parser
     {
         $this->mappers = $mappers;
+        $this->customMappers = true;
 
         return $this;
     }
@@ -214,8 +245,12 @@ class Parser
      */
     private function invalidateMapperCache(): void
     {
-        $this->mappers = [];
+        if (! $this->customMappers) {
+            $this->mappers = [];
+        }
+
         $this->firstSegmentParser = null;
+        $this->surnameSegmentParser = null;
         $this->secondSegmentParser = null;
     }
 

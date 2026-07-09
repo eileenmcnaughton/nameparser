@@ -28,6 +28,10 @@ class CommaSegmentTest extends TestCase
             'single credential given'         => ['Smith, MD', '', '', 'Smith', 'MD'],
             'comma suffix Jr'                 => ['Williams, Hank, Jr.', 'Hank', '', 'Williams', 'Jr'],
             'comma initial + suffix'          => ['Miller, Walter M., Jr.', 'Walter', '', 'Miller', 'Jr'],
+            'compound surname'                => ['Hidalgo Castillo, Maria', 'Maria', '', 'Hidalgo Castillo', ''],
+            'surname suffix Jr'               => ['Doe Jr, John', 'John', '', 'Doe', 'Jr'],
+            'surname roman suffix'            => ['Doe III, John', 'John', '', 'Doe', 'III'],
+            'credential-only given keeps first segment western' => ['Anthony Von Fange III, PHD', 'Anthony', '', 'von Fange', 'III PhD'],
         ];
     }
 

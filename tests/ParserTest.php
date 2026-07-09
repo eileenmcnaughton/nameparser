@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Language\German;
+use Iliaal\NameParser\Mapper\FirstnameMapper;
 use Iliaal\NameParser\Name;
 use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -672,6 +673,21 @@ class ParserTest extends TestCase
         $parser->setNicknameDelimiters(['<' => '>']);
         $this->assertSame('Bob', $parser->parse('John <Bob> Smith')->getNickname());
         $this->assertSame('', $parser->parse('John (Bob) Smith')->getNickname());
+    }
+
+    public function testConfigSettersPreserveCustomMappers(): void
+    {
+        $parser = (new Parser())->setMappers([new FirstnameMapper()]);
+        $parser->setMaxCombinedInitials(3);
+        $this->assertSame('', $parser->parse('John Smith')->getLastname());
+
+        $parser = (new Parser())->setMappers([new FirstnameMapper()]);
+        $parser->setMaxSalutationIndex(2);
+        $this->assertSame('', $parser->parse('John Smith')->getLastname());
+
+        $parser = (new Parser())->setMappers([new FirstnameMapper()]);
+        $parser->setNicknameDelimiters(['<' => '>']);
+        $this->assertSame('', $parser->parse('John Smith')->getLastname());
     }
 
     public function testParserAndSubparsersProperlyHandleLanguages(): void

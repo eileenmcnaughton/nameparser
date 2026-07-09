@@ -60,4 +60,15 @@ class ConfidenceTest extends TestCase
         $this->assertFalse($result['ambiguous'], "expected '$input' to be decidable");
         $this->assertSame([], $result['notes']);
     }
+
+    public function testFlagsLowercaseTokenInMixedCaseInput(): void
+    {
+        $result = Confidence::assess('John Smith do');
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(
+            ["'do' could be a name or a credential; token is lowercase"],
+            $result['notes'],
+        );
+    }
 }

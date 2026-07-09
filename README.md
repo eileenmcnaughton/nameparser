@@ -102,7 +102,7 @@ $parser->parse('Dr. Jane A. Doe DDS')->toArray();
 // [
 //   'salutation' => 'Dr.', 'firstname' => 'Jane', 'initials' => 'A.',
 //   'middlename' => '', 'lastname_prefix' => '', 'lastname' => 'Doe',
-//   'suffix' => 'DDS', 'nickname' => '', 'given_name' => 'Jane A. Doe',
+//   'suffix' => 'DDS', 'nickname' => '', 'given_name' => 'Jane A.',
 //   'full_name' => 'Jane A. Doe',
 // ]
 ```
@@ -139,6 +139,40 @@ unflagged; the title-case `Vi` resolves to the given name.
 > `Ma`, roman numerals, `MBA`), so you can route them to review. Clean
 > credentials that are not also names (`RN`, `PT`, `OD`) are left unflagged to
 > keep review volume manageable on all-caps datasets.
+
+### Languages
+
+`new Parser()` uses the English dictionary. Passing languages replaces that list:
+`new Parser([new German()])` gives you German salutations and German suffixes,
+not the English professional credentials.
+
+Compose dictionaries when you need both:
+
+```php
+use Iliaal\NameParser\Language\English;
+use Iliaal\NameParser\Language\German;
+
+$parser = new Parser([new English(), new German()]);
+```
+
+Dictionary keys merge in constructor order, and the first language wins on
+collisions. With English first, `Fr.` resolves to `Fr.`. With German first, it
+resolves to `Frau`.
+
+### Parsing limits
+
+Some inputs have no structural signal. A comma followed only by credentials can
+mean full name plus credentials (`Jane Doe, MD`) or surname plus credentials
+(`Hidalgo Castillo, MD`). The parser keeps the left side in Western order in
+that case. Use an explicit given-name segment, for example
+`Hidalgo Castillo, Maria, MD`, or post-process feeds where the left side is a
+surname-only field.
+
+Two-token surnames without particles are also ambiguous in space-separated names.
+`Jennifer Chen Wu` and `Mary Jo Li` share the same token structure, but one wants
+`Chen Wu` as a surname while the other wants `Jo` as a middle name. The parser
+keeps the existing compound-surname heuristic for two-character terminal
+surnames.
 
 ## Development
 

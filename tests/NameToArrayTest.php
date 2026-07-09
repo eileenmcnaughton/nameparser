@@ -28,6 +28,7 @@ class NameToArrayTest extends TestCase
         $this->assertSame('A.', $array['initials']);
         $this->assertSame('Doe', $array['lastname']);
         $this->assertSame('DDS', $array['suffix']);
+        $this->assertSame('Jane A.', $array['given_name']);
         $this->assertSame('Jane A. Doe', $array['full_name']);
     }
 

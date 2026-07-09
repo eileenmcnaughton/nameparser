@@ -13,10 +13,6 @@ abstract class PreNormalizedPart extends AbstractPart
         parent::__construct($value);
     }
 
-    /**
-     * if this is a lastname prefix, look up normalized version from registry
-     * otherwise camelcase the lastname
-     */
     #[\Override]
     public function normalize(): string
     {

@@ -76,8 +76,10 @@ class InitialMapper extends AbstractMapper
     }
 
     /**
-     * true when every cased token is uppercase and none carries a lowercase
-     * letter, i.e. the input casing gives no signal (all-caps registry data).
+     * true when every unmapped cased token is uppercase and none carries a
+     * lowercase letter, i.e. the input casing gives no signal (all-caps registry
+     * data). Already-mapped salutations and suffixes are ignored because their
+     * normalized values may differ from the original token casing.
      *
      * @param  PartArray  $parts
      */
@@ -86,8 +88,11 @@ class InitialMapper extends AbstractMapper
         $hasUpper = false;
 
         foreach ($parts as $part) {
-            $value = $part instanceof AbstractPart ? $part->getValue() : $part;
-            $letters = preg_replace('/[^\p{L}]/u', '', $value) ?? '';
+            if ($part instanceof AbstractPart) {
+                continue;
+            }
+
+            $letters = preg_replace('/[^\p{L}]/u', '', $part) ?? '';
 
             if ($letters === '') {
                 continue;

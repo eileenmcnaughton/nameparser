@@ -230,4 +230,27 @@ class NpiCorpusTest extends TestCase
             "last name for '$input'",
         );
     }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function credentialTailProvider(): array
+    {
+        return [
+            'RN' => ['Griffiths, Veronica RN', 'RN'],
+            'JD and LPC' => ['King, Michelle JD, LPC', 'JD LPC'],
+            'DO' => ['Awuor, Victor DO', 'DO'],
+            'LCSW' => ['Ogbonna, Oliver LCSW', 'LCSW'],
+        ];
+    }
+
+    #[DataProvider('credentialTailProvider')]
+    public function testCredentialRowsDoNotLeakCredentialsIntoGivenNameFields(string $input, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+        $this->assertSame('', $name->getInitials(), "initials for '$input'");
+        $this->assertSame('', $name->getMiddlename(), "middle name for '$input'");
+    }
 }

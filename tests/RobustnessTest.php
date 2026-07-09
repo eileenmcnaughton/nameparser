@@ -22,6 +22,15 @@ class RobustnessTest extends TestCase
         $this->assertStringNotContainsString("\u{FFFD}", $combined, 'no replacement char');
     }
 
+    public function testShortUnicodeLastnameDoesNotAbsorbMiddleName(): void
+    {
+        $name = (new Parser())->parse("Mary Jo \u{00C9}");
+
+        $this->assertSame('Mary', $name->getFirstname());
+        $this->assertSame('Jo', $name->getMiddlename());
+        $this->assertSame("\u{00C9}", $name->getLastname());
+    }
+
     public function testTrailingCommaCredentialsAreNotDropped(): void
     {
         $name = (new Parser())->parse('Smith, John, MD, PhD');
@@ -30,6 +39,27 @@ class RobustnessTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
         $this->assertStringContainsString('MD', $name->getSuffix());
         $this->assertStringContainsString('PhD', $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function trailingPunctuationCredentialProvider(): array
+    {
+        return [
+            'semicolon' => ['John Smith MD;', 'MD'],
+            'paren' => ['John Smith MD)', 'MD'],
+        ];
+    }
+
+    #[DataProvider('trailingPunctuationCredentialProvider')]
+    public function testTrailingPunctuationDoesNotBlockCredentialLookup(string $input, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame($suffix, $name->getSuffix());
     }
 
     public function testToStringOmitsEmptyNicknameParentheses(): void

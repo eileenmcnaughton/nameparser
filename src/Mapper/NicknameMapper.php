@@ -76,7 +76,7 @@ class NicknameMapper extends AbstractMapper
                 $pending = [];
             }
 
-            $parts[$k] = new Nickname(str_replace(['"', '\''], '', $part));
+            $parts[$k] = new Nickname(trim($part, '"\''));
         }
 
         // an opening delimiter with no matching close is not a nickname: revert

@@ -53,7 +53,20 @@ class NicknameMapperTest extends AbstractMapperTestCase
                     new Nickname('Will'),
                     'Shatner',
                 ],
-            ],            [
+            ],
+            [
+                'input' => [
+                    'John',
+                    '(O\'Brien)',
+                    'Smith',
+                ],
+                'expectation' => [
+                    'John',
+                    new Nickname('O\'Brien'),
+                    'Smith',
+                ],
+            ],
+            [
                 'input' => [
                     new Salutation('Mr'),
                     'Andre',

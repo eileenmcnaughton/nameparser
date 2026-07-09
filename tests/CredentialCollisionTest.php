@@ -26,6 +26,7 @@ class CredentialCollisionTest extends TestCase
             'comma credential keeps surname'      => ['Jane Doe, DDS', 'Jane', 'Doe', 'DDS'],
             'DVM'                                 => ['Robert Brown DVM', 'Robert', 'Brown', 'DVM'],
             'comma DO'                            => ['Robert Brown, DO', 'Robert', 'Brown', 'DO'],
+            'space DO'                            => ['Jane Doe DO', 'Jane', 'Doe', 'DO'],
             'PsyD'                                => ['Alice Green PsyD', 'Alice', 'Green', 'PsyD'],
             'comma LCSW'                          => ['Alice Green, LCSW', 'Alice', 'Green', 'LCSW'],
             'MSW'                                 => ['Tom White MSW', 'Tom', 'White', 'MSW'],
@@ -36,6 +37,12 @@ class CredentialCollisionTest extends TestCase
             'roman numeral IX'                    => ['Henry Ford IX', 'Henry', 'Ford', 'IX'],
             'salutation Hon.'                     => ['Hon. Patricia Reed', 'Patricia', 'Reed', ''],
             'comma MD'                            => ['John Smith, MD', 'John', 'Smith', 'MD'],
+            'first initial + MD without lastname' => ['John A. MD', 'John', '', 'MD'],
+            'first initial + RN without lastname' => ['Mary J. RN', 'Mary', '', 'RN'],
+            'first initial + PhD without lastname' => ['John A PhD', 'John', '', 'PhD'],
+            'first + credential without lastname' => ['Jane DDS', 'Jane', '', 'DDS'],
+            'first + Jr without lastname'         => ['John Jr', 'John', '', 'Jr'],
+            'first + roman without lastname'      => ['John III', 'John', '', 'III'],
 
             // name/credential collisions — must stay names, no suffix
             'surname Do, two tokens'              => ['Anh Do', 'Anh', 'Do', ''],
@@ -76,6 +83,13 @@ class CredentialCollisionTest extends TestCase
             'all-caps given Bo'                   => ['BO JACKSON', 'Bo', 'Jackson', ''],
             'all-caps given Vi stays a name'      => ['VI NGUYEN', 'Vi', 'Nguyen', ''],
             'all-caps comma two-letter given'     => ['NGUYEN, JO', 'Jo', 'Nguyen', ''],
+            'all-caps two-letter given with PhD'  => ['JO ANDERSON PhD', 'Jo', 'Anderson', 'PhD'],
+            'all-caps two-letter given with salutation' => ['Dr. JO ANDERSON', 'Jo', 'Anderson', ''],
+            'all-caps DO strips as suffix'        => ['ANH TRAN DO', 'Anh', 'Tran', 'DO'],
+
+            // legal credential
+            'comma JD'                            => ['King, Michelle JD', 'Michelle', 'King', 'JD'],
+            'comma JD and LPC'                    => ['King, Michelle JD, LPC', 'Michelle', 'King', 'JD LPC'],
         ];
     }
 
@@ -85,6 +99,71 @@ class CredentialCollisionTest extends TestCase
         $name = (new Parser())->parse($input);
 
         $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function parentheticalCredentialProvider(): array
+    {
+        return [
+            'space form' => ['Jane Doe (MD)', 'Jane', 'Doe', 'MD'],
+            'comma form' => ['Smith, John (MD)', 'John', 'Smith', 'MD'],
+        ];
+    }
+
+    #[DataProvider('parentheticalCredentialProvider')]
+    public function testParentheticalCredentialsAreSuffixes(string $input, string $first, string $last, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+        $this->assertSame('', $name->getNickname(), "nickname for '$input'");
+    }
+
+    public function testInterruptedCredentialTailDoesNotLeakCredentialsIntoNameFields(): void
+    {
+        $name = (new Parser())->parse('Jane Doe MD Unknown PhD');
+
+        $this->assertSame('Jane', $name->getFirstname());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('MD PhD', $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string, string, string, string, string}>
+     */
+    public static function interruptedCredentialTailProvider(): array
+    {
+        return [
+            'placeholder between credentials is stripped' => ['Jane Doe MD Unknown PhD', 'Jane', '', 'Doe', 'MD PhD'],
+            'name between credentials is preserved'      => ['Jane Doe MD Robert PhD', 'Jane', 'Doe', 'Robert', 'MD PhD'],
+            'surname between credentials is preserved'   => ['Jane MD Doe PhD', 'Jane', '', 'Doe', 'MD PhD'],
+            'comma given between credentials is preserved' => ['Smith, MD John PhD', 'John', '', 'Smith', 'MD PhD'],
+            'roman suffix before a name is preserved'    => ['John Smith III Robert PhD', 'John', 'Smith', 'Robert', 'III PhD'],
+            'placeholder after credentials is stripped'  => ['Jane Doe MD PhD Unknown', 'Jane', '', 'Doe', 'MD PhD'],
+            'punctuation between credentials is stripped' => ['Jane Doe MD - PhD', 'Jane', '', 'Doe', 'MD PhD'],
+        ];
+    }
+
+    #[DataProvider('interruptedCredentialTailProvider')]
+    public function testInterruptedCredentialTailKeepsNameTokensAndDropsNoise(
+        string $input,
+        string $first,
+        string $middle,
+        string $last,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }

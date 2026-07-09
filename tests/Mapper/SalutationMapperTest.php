@@ -28,6 +28,14 @@ class SalutationMapperTest extends AbstractMapperTestCase
             [
                 'input' => [
                     'Mr',
+                ],
+                'expectation' => [
+                    new Salutation('Mr', 'Mr.'),
+                ],
+            ],
+            [
+                'input' => [
+                    'Mr',
                     'Peter',
                     'Pan',
                 ],

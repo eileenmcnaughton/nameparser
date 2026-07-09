@@ -9,6 +9,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Dutch honorifics (Dhr., Mevr., Mw.) in the default parser, so "Dhr. Jan de Vries" reads the title as a salutation instead of a first name.
+- Legal credential JD, so "King, Michelle JD, LPC" keeps both credentials in the suffix.
+
+### Changed
+
+- `Name::toArray()['given_name']` is now documented as first, middle, and initials only. Use `full_name` when you need the given name plus surname.
+- Custom mapper lists set with `setMappers()` now survive `setMaxCombinedInitials()`, `setMaxSalutationIndex()`, and `setNicknameDelimiters()`.
+
+### Fixed
+
+- Credential-only rows such as "Jane DDS" and initial-plus-credential rows such as "John A. MD" now keep the credential in the suffix instead of rewriting it as the last name.
+- All-caps short given names stay intact beside mixed-case salutations or credentials, so "JO ANDERSON PhD" keeps first name Jo.
+- Parenthetical credentials such as "Jane Doe (MD)" now parse as suffixes instead of nicknames.
+- Comma surname segments with real given names keep non-particle compound surnames and left-side suffixes, so "Hidalgo Castillo, Maria" and "Doe Jr, John" parse as expected.
+- Interrupted credential tails keep recognized credentials in the suffix while preserving name-like bridge tokens; placeholder/punctuation noise such as "Unknown" or "-" is stripped from the tail.
+- Nicknames preserve internal apostrophes, so "John (O'Brien) Smith" keeps O'Brien.
+- Single-token salutations such as "Mr" now parse as salutations under the default salutation scan.
+- Trailing punctuation no longer blocks credential lookup for tokens such as "MD;" and "MD)".
 
 ## [1.2.0] - 2026-06-27
 

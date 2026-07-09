@@ -52,6 +52,10 @@ class SuffixMapper extends AbstractMapper
         'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
     ];
 
+    private const array TAIL_NOISE_KEYS = [
+        'unknown' => true,
+    ];
+
     /**
      * @param  array<string, string>  $suffixes
      */
@@ -65,6 +69,7 @@ class SuffixMapper extends AbstractMapper
      * @param  PartArray  $parts
      * @return PartArray
      */
+    #[\Override]
     public function map(array $parts): array
     {
         if ($this->isMatchingSinglePart($parts)) {
@@ -76,19 +81,86 @@ class SuffixMapper extends AbstractMapper
             return $parts;
         }
 
-        $start = count($parts) - 1;
+        /** @var list<int> $suffixIndexes */
+        $suffixIndexes = [];
+        /** @var array<int, true> $noiseIndexes */
+        $noiseIndexes = [];
+        $mappedSuffix = false;
 
-        for ($k = $start; $k > $this->reservedParts - 1; $k--) {
+        for ($k = count($parts) - 1; $k >= 0; $k--) {
             $part = $parts[$k];
 
-            if (! $this->isSuffix($part)) {
+            if (! is_string($part)) {
                 break;
             }
 
-            $parts[$k] = new Suffix($part, $this->suffixes[$this->getKey($part)]);
+            if (! $this->isSuffix($part)) {
+                if (! $this->canSkipInterruptedTailAtIndex($k)) {
+                    break;
+                }
+
+                if (! $mappedSuffix && ! $this->isTailNoise($part)) {
+                    break;
+                }
+
+                if ($this->isTailNoise($part)) {
+                    $noiseIndexes[$k] = true;
+                }
+
+                continue;
+            }
+
+            if (! $this->canMapAtIndex($parts, $part, $k)) {
+                break;
+            }
+
+            $suffixIndexes[] = $k;
+            $mappedSuffix = true;
         }
 
-        return $parts;
+        if ($suffixIndexes === []) {
+            return $parts;
+        }
+
+        return $this->rewriteCredentialTail($parts, $suffixIndexes, $noiseIndexes);
+    }
+
+    /**
+     * @param  PartArray  $parts
+     * @param  list<int>  $suffixIndexes
+     * @param  array<int, true>  $noiseIndexes
+     * @return PartArray
+     */
+    private function rewriteCredentialTail(array $parts, array $suffixIndexes, array $noiseIndexes): array
+    {
+        sort($suffixIndexes);
+        $firstSuffixIndex = $suffixIndexes[0];
+        /** @var array<int, true> $suffixIndexSet */
+        $suffixIndexSet = array_fill_keys($suffixIndexes, true);
+
+        $rewritten = [];
+
+        for ($i = 0; $i < $firstSuffixIndex; $i++) {
+            $rewritten[] = $parts[$i];
+        }
+
+        for ($i = $firstSuffixIndex; $i < count($parts); $i++) {
+            if (isset($suffixIndexSet[$i]) || isset($noiseIndexes[$i])) {
+                continue;
+            }
+
+            $rewritten[] = $parts[$i];
+        }
+
+        foreach ($suffixIndexes as $index) {
+            $part = $parts[$index];
+
+            if (is_string($part)) {
+                $rewritten[] = new Suffix($part, $this->suffixes[$this->getKey($part)]);
+            }
+        }
+
+        return $rewritten;
     }
 
     /**
@@ -114,9 +186,6 @@ class SuffixMapper extends AbstractMapper
         return $this->isSuffix($parts[0]);
     }
 
-    /**
-     * @phpstan-assert-if-true string $part
-     */
     protected function isSuffix(AbstractPart|string $part): bool
     {
         if ($part instanceof AbstractPart) {
@@ -139,6 +208,56 @@ class SuffixMapper extends AbstractMapper
     protected function isAmbiguous(string $part): bool
     {
         return isset(self::AMBIGUOUS_KEYS[$this->getKey($part)]);
+    }
+
+    /**
+     * @param  PartArray  $parts
+     */
+    protected function canMapAtIndex(array $parts, string $part, int $index): bool
+    {
+        if ($this->getKey($part) === 'ma' && $this->isPrecededBySingleInitial($parts, $index)) {
+            return false;
+        }
+
+        if ($index > $this->reservedParts - 1) {
+            return true;
+        }
+
+        if ($this->reservedParts !== 2 || $index !== 1) {
+            return false;
+        }
+
+        return ! in_array($this->getKey($part), ['junior', 'senior'], true);
+    }
+
+    private function canSkipInterruptedTailAtIndex(int $index): bool
+    {
+        return $index > $this->reservedParts - 1;
+    }
+
+    private function isTailNoise(string $part): bool
+    {
+        if (isset(self::TAIL_NOISE_KEYS[$this->getKey($part)])) {
+            return true;
+        }
+
+        return preg_match('/[\p{L}\p{N}]/u', $part) !== 1;
+    }
+
+    /**
+     * @param  PartArray  $parts
+     */
+    private function isPrecededBySingleInitial(array $parts, int $index): bool
+    {
+        $previous = $parts[$index - 1] ?? null;
+
+        if (! is_string($previous)) {
+            return false;
+        }
+
+        $letters = preg_replace('/[^\p{L}]/u', '', $previous) ?? '';
+
+        return mb_strlen($letters, 'UTF-8') === 1;
     }
 
     protected function isUpperCase(string $part): bool
