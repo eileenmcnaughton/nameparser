@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-10
+
 ### Added
 
 - Dutch honorifics (Dhr., Mevr., Mw.) in the default parser, so "Dhr. Jan de Vries" reads the title as a salutation instead of a first name.
@@ -110,7 +112,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
 
-[Unreleased]: https://github.com/iliaal/nameparser/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/iliaal/nameparser/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/iliaal/nameparser/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/iliaal/nameparser/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/iliaal/nameparser/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/iliaal/nameparser/releases/tag/v1.0.0
