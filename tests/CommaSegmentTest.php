@@ -32,6 +32,15 @@ class CommaSegmentTest extends TestCase
             'surname suffix Jr'               => ['Doe Jr, John', 'John', '', 'Doe', 'Jr'],
             'surname roman suffix'            => ['Doe III, John', 'John', '', 'Doe', 'III'],
             'credential-only given keeps first segment western' => ['Anthony Von Fange III, PHD', 'Anthony', '', 'von Fange', 'III PhD'],
+            // a whole credential-only segment is pulled out to the suffix; the
+            // remaining name segments still fold into the given name
+            'credential segment before given' => ['Smith, MD, John', 'John', '', 'Smith', 'MD'],
+            'all-credential segments western'  => ['John Smith, MD, FACS', 'John', '', 'Smith', 'MD FACS'],
+            'unknown credential rides on known' => ['Garcia, Maria, MD, FACS', 'Maria', '', 'Garcia', 'MD FACS'],
+            'ambiguous credential segment keeps middle' => ['Smith, John, DO, Robert', 'John', 'Robert', 'Smith', 'DO'],
+            // leading credential run inside the given segment
+            'leading credential run in given' => ['Smith, MD John', 'John', '', 'Smith', 'MD'],
+            'leading title-case name is not a credential' => ['Smith, Do John', 'Do', 'John', 'Smith', ''],
         ];
     }
 
@@ -61,5 +70,123 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('J', $name->getFirstname());
         $this->assertSame('M', $name->getInitials());
         $this->assertSame('Walker', $name->getLastname());
+    }
+
+    /**
+     * The uniform-uppercase signal for the InitialMapper split gate comes from
+     * the whole input, not the given segment alone. "Smith" proves mixed case,
+     * so the JM token splits exactly as it does in the space-form "JM Smith".
+     */
+    public function testCommaGivenInitialsUseWholeInputCasing(): void
+    {
+        $name = (new Parser())->parse('Smith, JM');
+
+        $this->assertSame('J', $name->getFirstname());
+        $this->assertSame('M', $name->getInitials());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    public function testUniformUpperCommaInputSuppressesInitialSplit(): void
+    {
+        $name = (new Parser())->parse('SMITH, JM');
+
+        $this->assertSame('Jm', $name->getFirstname());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    /**
+     * The override is transient: a plain single-segment parse on the same
+     * instance is unaffected by a preceding comma parse.
+     */
+    public function testOverrideDoesNotLeakToSingleSegmentParse(): void
+    {
+        $parser = new Parser();
+        $parser->parse('SMITH, JM');
+        $name = $parser->parse('JM Walker');
+
+        $this->assertSame('J', $name->getFirstname());
+        $this->assertSame('M', $name->getInitials());
+        $this->assertSame('Walker', $name->getLastname());
+    }
+
+    /**
+     * a surname segment that is nothing but a salutation must keep it a
+     * salutation, not promote it to a last name
+     */
+    public function testLoneSalutationSurnameSegmentStaysSalutation(): void
+    {
+        $name = (new Parser())->parse('Dr., John');
+
+        $this->assertSame('Dr.', $name->getSalutation());
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('', $name->getLastname());
+    }
+
+    /**
+     * the surname sub-parser now runs the Nickname and Initial mappers, so a
+     * parenthetical nickname is extracted and a stray letter becomes an initial
+     * rather than raw middle-name text
+     */
+    public function testSurnameSegmentExtractsNickname(): void
+    {
+        $name = (new Parser())->parse('John (Bob) Smith, MD');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Bob', $name->getNickname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    public function testSurnameSegmentSplitsInitials(): void
+    {
+        $name = (new Parser())->parse('J. R. Smith MD,');
+
+        $this->assertSame('J.', $name->getFirstname());
+        $this->assertSame('R.', $name->getInitials());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    /**
+     * a comma inside a matched nickname delimiter span must not be treated as
+     * the surname/given separator
+     */
+    public function testCommaInsideNicknameDoesNotBisect(): void
+    {
+        $name = (new Parser())->parse('John (Bob, Jr) Doe');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Bob, Jr', $name->getNickname());
+        $this->assertSame('Doe', $name->getLastname());
+    }
+
+    /**
+     * a real comma still separates the surname from the given segment; a
+     * secondary comma inside a given-side parenthetical is not bisected into
+     * the surname
+     */
+    public function testStructuralCommaStillSplitsWithGivenSideParenthetical(): void
+    {
+        $name = (new Parser())->parse('Smith, John (Jack, III)');
+
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('John', $name->getFirstname());
+    }
+
+    /**
+     * "MS" is both a salutation (Ms.) and a credential (MS). In the given
+     * segment the Suffix mapper runs before the Salutation mapper, so a bare
+     * "MS" given segment is classified as a trailing credential, not promoted
+     * to a leading salutation.
+     */
+    public function testGivenSegmentCredentialOutranksSalutationCollision(): void
+    {
+        $name = (new Parser())->parse('Smith, MS');
+
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MS', $name->getSuffix());
+        $this->assertSame('', $name->getSalutation());
+        $this->assertSame('', $name->getFirstname());
     }
 }

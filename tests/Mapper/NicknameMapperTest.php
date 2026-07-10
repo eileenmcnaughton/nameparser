@@ -120,6 +120,47 @@ class NicknameMapperTest extends AbstractMapperTestCase
                     'Roussimoff',
                 ],
             ],
+            // a leading quote with no closing quote later is an elided particle,
+            // not a nickname opener: leave the token verbatim
+            [
+                'input' => [
+                    'Gerard',
+                    '\'t',
+                    'Hooft',
+                ],
+                'expectation' => [
+                    'Gerard',
+                    '\'t',
+                    'Hooft',
+                ],
+            ],
+            [
+                'input' => [
+                    'John',
+                    '\'Bob\'',
+                    'Smith',
+                ],
+                'expectation' => [
+                    'John',
+                    new Nickname('Bob'),
+                    'Smith',
+                ],
+            ],
+            // lone delimiter tokens clean to empty and must not emit empty Nicknames
+            [
+                'input' => [
+                    'John',
+                    '(',
+                    'Bob',
+                    ')',
+                    'Smith',
+                ],
+                'expectation' => [
+                    'John',
+                    new Nickname('Bob'),
+                    'Smith',
+                ],
+            ],
         ];
     }
 

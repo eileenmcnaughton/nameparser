@@ -10,11 +10,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Dutch honorifics (Dhr., Mevr., Mw.) in the default parser, so "Dhr. Jan de Vries" reads the title as a salutation instead of a first name.
 - Legal credential JD, so "King, Michelle JD, LPC" keeps both credentials in the suffix.
+- `Name::getSource()` returns the normalized input the name was parsed from (null for a manually constructed Name), the same string `getConfidence()` assesses.
 
 ### Changed
 
 - `Name::toArray()['given_name']` is now documented as first, middle, and initials only. Use `full_name` when you need the given name plus surname.
 - Custom mapper lists set with `setMappers()` now survive `setMaxCombinedInitials()`, `setMaxSalutationIndex()`, and `setNicknameDelimiters()`. Passing an empty list resets the parser to the default pipeline.
+- Fluent setters (`Parser::setMappers()`, `setWhitespace()`, `setNicknameDelimiters()`, `setMaxSalutationIndex()`, `setMaxCombinedInitials()`, `setSurnameFirst()`, and `Name::setParts()`, `setSource()`) return `static`, so a subclass keeps its own type through a call chain instead of narrowing to the base class.
+- `LanguageInterface` documents the dictionary key format: keys must already be normalized (lowercase, periods removed, no edge punctuation) as `Text::key()` produces, and may be int or string, so a numeric ordinal like the German "2." keys under the bare digit.
+- Export is faster on large batches: `camelcase()` results are cached on the part, `Name::export()` no longer rebuilds class names per part, `Text::key()` normalizations are cached, and the whitespace-collapse regex is memoized. A full parse-plus-`toArray()` row is net faster than 1.2.0; raw `parse()` alone is somewhat slower because the new credential and comma safeguards add per-row scans.
 
 ### Fixed
 
@@ -28,6 +32,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Nicknames preserve internal apostrophes, so "John (O'Brien) Smith" keeps O'Brien.
 - Single-token salutations such as "Mr" now parse as salutations under the default salutation scan.
 - Trailing punctuation no longer blocks credential lookup for tokens such as "MD;" and "MD)".
+- Unknown trailing credentials are kept when a known credential anchors the tail, so "John Smith MD FACS" keeps both MD and FACS in the suffix instead of leaking FACS into the name. Uniform all-caps rows still cannot recover an unknown credential (casing carries no signal there).
+- A credential-only segment after the given name is pulled out to the suffix, so "Smith, MD, John" keeps first name John and credential MD instead of reading MD as a name. Mixed given-plus-credential tails ("John Smith, MD, FACS") keep all credentials.
+- A leading credential run in the given segment maps to the suffix, so "Smith, MD John" keeps first name John and credential MD instead of shredding MD into initials.
+- The confidence pass keys punctuation-wrapped tokens the same way the parser does, so "NGUYEN, VI;" is flagged as ambiguous instead of slipping past on the trailing semicolon.
+- German ordinal suffixes are recognized, so "Friedrich Wilhelm 2." keeps 2. as the suffix (the ordinal keys under the bare digit).
+- Caseless-script names are not split into initials, so "Wang, 李明" keeps 李明 as the first name instead of splitting it into two initials.
+- Comma-form initials use the whole input's casing, so "Smith, JM" splits JM into J and initial M (the mixed-case surname proves the signal) while all-caps "SMITH, JM" keeps Jm as a first name.
+- Surname-first parsing handles a leading salutation and a credential-only tail, so "Dr. Kim Jong Un" keeps surname Kim (not the title) and "Kim Jong Un, MD" keeps surname Kim with credential MD instead of falling back to Western order.
+- A comma inside a bracketed nickname no longer bisects the name, so "John (Bob, Jr) Doe" keeps last name Doe and nickname "Bob, Jr" instead of splitting at the nickname's comma.
+- Nickname delimiters accept multibyte and multi-character opener/closer pairs, and empty-string delimiter keys are ignored instead of emitting a warning per parse.
+- An elided surname particle survives instead of being read as an unterminated nickname or an initial, so "'t Hooft" keeps the leading particle.
+- Spaced parentheses yield a clean nickname, so "John ( Bob ) Smith" gives nickname Bob without stray spaces, and a delimiter pair that cleans to nothing emits no nickname at all.
+- A name part that normalizes to "0" survives `getAll()` and the string cast, so "Jane 0" is not silently dropped.
+- `setWhitespace('')` no longer emits a warning per parse; an empty whitespace set simply skips the collapse step.
 
 ## [1.2.0] - 2026-06-27
 
@@ -87,3 +105,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Empty nickname no longer renders as "()" in the string cast of a name.
 - `setWhitespace()` now trims the configured characters from the edges of the input.
 - `setMaxSalutationIndex()` larger than the token count no longer emits undefined-array-key warnings.
+
+[Unreleased]: https://github.com/iliaal/nameparser/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/iliaal/nameparser/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/iliaal/nameparser/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/iliaal/nameparser/releases/tag/v1.0.0

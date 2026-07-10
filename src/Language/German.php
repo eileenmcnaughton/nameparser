@@ -7,11 +7,11 @@ use Iliaal\NameParser\LanguageInterface;
 class German implements LanguageInterface
 {
     public const array SUFFIXES = [
-        '1.' => '1.',
-        '2.' => '2.',
-        '3.' => '3.',
-        '4.' => '4.',
-        '5.' => '5.',
+        '1' => '1.',
+        '2' => '2.',
+        '3' => '3.',
+        '4' => '4.',
+        '5' => '5.',
         'i' => 'I',
         'ii' => 'II',
         'iii' => 'III',
@@ -36,7 +36,7 @@ class German implements LanguageInterface
     ];
 
     /**
-     * @return array<string, string>
+     * @return array<int|string, string>
      */
     #[\Override]
     public function getSuffixes(): array

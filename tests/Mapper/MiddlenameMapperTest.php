@@ -6,6 +6,7 @@ use Iliaal\NameParser\Mapper\MiddlenameMapper;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Middlename;
+use Iliaal\NameParser\Part\MiddlenamePrefix;
 
 class MiddlenameMapperTest extends AbstractMapperTestCase
 {
@@ -90,11 +91,32 @@ class MiddlenameMapperTest extends AbstractMapperTestCase
                     true,
                 ],
             ],
+            [
+                'input' => [
+                    new Firstname('Maria'),
+                    'del',
+                    'Carmen',
+                    new Lastname('Fernandez'),
+                ],
+                'expectation' => [
+                    new Firstname('Maria'),
+                    new MiddlenamePrefix('del', 'del'),
+                    new Middlename('Carmen'),
+                    new Lastname('Fernandez'),
+                ],
+                'arguments' => [
+                    false,
+                    ['del' => 'del'],
+                ],
+            ],
         ];
     }
 
-    protected function getMapper(bool $mapWithoutLastname = false): MiddlenameMapper
+    /**
+     * @param  array<int|string, string>  $prefixes
+     */
+    protected function getMapper(bool $mapWithoutLastname = false, array $prefixes = []): MiddlenameMapper
     {
-        return new MiddlenameMapper($mapWithoutLastname);
+        return new MiddlenameMapper($mapWithoutLastname, $prefixes);
     }
 }

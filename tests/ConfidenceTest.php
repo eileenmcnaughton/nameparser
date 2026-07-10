@@ -71,4 +71,28 @@ class ConfidenceTest extends TestCase
             $result['notes'],
         );
     }
+
+    public function testFlagsPunctuationSuffixedAmbiguousToken(): void
+    {
+        // keying must strip trailing punctuation like the parser does, otherwise
+        // "VI;" would miss the AMBIGUOUS_KEYS lookup that "VI" hits
+        $result = Confidence::assess('NGUYEN, VI;');
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(
+            ["'VI;' could be a name or a credential; input casing is uniform"],
+            $result['notes'],
+        );
+    }
+
+    public function testFlagsParenWrappedAmbiguousToken(): void
+    {
+        $result = Confidence::assess('SMITH, JOHN (DO)');
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(
+            ["'(DO)' could be a name or a credential; input casing is uniform"],
+            $result['notes'],
+        );
+    }
 }

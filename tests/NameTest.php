@@ -58,6 +58,34 @@ class NameTest extends TestCase
         $this->assertSame('van Delft', $name->getLastname());
     }
 
+    public function testGetAllRetainsPartNormalizingToStringZero(): void
+    {
+        $name = new Name([
+            new Firstname('John'),
+            new Lastname('0'),
+        ]);
+
+        $all = $name->getAll();
+
+        $this->assertArrayHasKey('lastname', $all);
+        $this->assertSame('0', $all['lastname']);
+        $this->assertSame('John 0', (string) $name);
+    }
+
+    public function testGetSourceReturnsNullWhenNoSourceRecorded(): void
+    {
+        $name = new Name([new Firstname('John')]);
+
+        $this->assertNull($name->getSource());
+    }
+
+    public function testGetSourceReturnsRecordedSource(): void
+    {
+        $name = (new Name([new Firstname('John')]))->setSource('john doe');
+
+        $this->assertSame('john doe', $name->getSource());
+    }
+
     public function testGetGivenNameShouldReturnGivenNameInGivenOrder(): void
     {
         $parser = new Parser();

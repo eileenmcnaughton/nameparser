@@ -4,6 +4,7 @@ namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Suffix;
+use Iliaal\NameParser\Text;
 
 /**
  * @phpstan-import-type PartArray from AbstractMapper
@@ -57,7 +58,7 @@ class SuffixMapper extends AbstractMapper
     ];
 
     /**
-     * @param  array<string, string>  $suffixes
+     * @param  array<int|string, string>  $suffixes
      */
     public function __construct(
         protected array $suffixes,
@@ -81,13 +82,33 @@ class SuffixMapper extends AbstractMapper
             return $parts;
         }
 
+        // casing carries no signal under uniform-uppercase input, so unknown
+        // all-caps tokens are not treated as credential candidates there.
+        // Computed lazily: most rows never reach the candidate check.
+        $uniformUpper = null;
+
+        // in the comma given-segment config a leading credential run precedes
+        // the given name ("Smith, MD John"); map it before the tail scan so it
+        // is not left as a stray token that gets split into phantom initials.
+        $leadingSuffixIndexes = $this->reservedParts === 0
+            ? $this->mapLeadingSuffixRun($parts)
+            : [];
+        /** @var array<int, true> $leadingSet */
+        $leadingSet = array_fill_keys($leadingSuffixIndexes, true);
+
         /** @var list<int> $suffixIndexes */
         $suffixIndexes = [];
         /** @var array<int, true> $noiseIndexes */
         $noiseIndexes = [];
+        /** @var array<int, true> $candidateIndexes */
+        $candidateIndexes = [];
         $mappedSuffix = false;
 
         for ($k = count($parts) - 1; $k >= 0; $k--) {
+            if (isset($leadingSet[$k])) {
+                continue;
+            }
+
             $part = $parts[$k];
 
             if (! is_string($part)) {
@@ -99,12 +120,24 @@ class SuffixMapper extends AbstractMapper
                     break;
                 }
 
-                if (! $mappedSuffix && ! $this->isTailNoise($part)) {
-                    break;
-                }
-
+                // noise keeps precedence over the candidate check so a
+                // placeholder ("Unknown") is dropped, not carried as a cred.
                 if ($this->isTailNoise($part)) {
                     $noiseIndexes[$k] = true;
+
+                    continue;
+                }
+
+                $uniformUpper ??= $this->isUniformUpperContext($parts);
+
+                if (! $uniformUpper && $this->isUnknownCredentialCandidate($part)) {
+                    $candidateIndexes[$k] = true;
+
+                    continue;
+                }
+
+                if (! $mappedSuffix) {
+                    break;
                 }
 
                 continue;
@@ -118,29 +151,40 @@ class SuffixMapper extends AbstractMapper
             $mappedSuffix = true;
         }
 
+        $suffixIndexes = array_merge($leadingSuffixIndexes, $suffixIndexes);
+
+        // candidates ride along only when a real dictionary suffix anchored the
+        // tail; with none, the outcome stays byte-identical to no stripping.
         if ($suffixIndexes === []) {
             return $parts;
         }
 
-        return $this->rewriteCredentialTail($parts, $suffixIndexes, $noiseIndexes);
+        return $this->rewriteCredentialTail($parts, $suffixIndexes, $noiseIndexes, $candidateIndexes);
     }
 
     /**
      * @param  PartArray  $parts
      * @param  list<int>  $suffixIndexes
      * @param  array<int, true>  $noiseIndexes
+     * @param  array<int, true>  $candidateIndexes
      * @return PartArray
      */
-    private function rewriteCredentialTail(array $parts, array $suffixIndexes, array $noiseIndexes): array
+    private function rewriteCredentialTail(array $parts, array $suffixIndexes, array $noiseIndexes, array $candidateIndexes): array
     {
-        sort($suffixIndexes);
-        $firstSuffixIndex = $suffixIndexes[0];
         /** @var array<int, true> $suffixIndexSet */
         $suffixIndexSet = array_fill_keys($suffixIndexes, true);
 
+        // dictionary suffixes and unknown-credential candidates both render as
+        // Suffix parts, merged in original left-to-right order
+        $creditIndexes = array_keys($suffixIndexSet + $candidateIndexes);
+        sort($creditIndexes);
+        /** @var array<int, true> $creditSet */
+        $creditSet = array_fill_keys($creditIndexes, true);
+        $firstCreditIndex = $creditIndexes[0];
+
         $rewritten = [];
 
-        for ($i = 0; $i < $firstSuffixIndex; $i++) {
+        for ($i = 0; $i < $firstCreditIndex; $i++) {
             if (isset($noiseIndexes[$i])) {
                 continue;
             }
@@ -148,20 +192,24 @@ class SuffixMapper extends AbstractMapper
             $rewritten[] = $parts[$i];
         }
 
-        for ($i = $firstSuffixIndex; $i < count($parts); $i++) {
-            if (isset($suffixIndexSet[$i]) || isset($noiseIndexes[$i])) {
+        for ($i = $firstCreditIndex; $i < count($parts); $i++) {
+            if (isset($creditSet[$i]) || isset($noiseIndexes[$i])) {
                 continue;
             }
 
             $rewritten[] = $parts[$i];
         }
 
-        foreach ($suffixIndexes as $index) {
+        foreach ($creditIndexes as $index) {
             $part = $parts[$index];
 
-            if (is_string($part)) {
-                $rewritten[] = new Suffix($part, $this->suffixes[$this->getKey($part)]);
+            if (! is_string($part)) {
+                continue;
             }
+
+            $rewritten[] = isset($suffixIndexSet[$index])
+                ? new Suffix($part, $this->suffixes[$this->getKey($part)])
+                : new Suffix($part);
         }
 
         return $rewritten;
@@ -248,6 +296,105 @@ class SuffixMapper extends AbstractMapper
         return $index > $this->reservedParts - 1;
     }
 
+    /**
+     * leading run of dictionary suffixes at the head of a comma given segment
+     * ("MD John"), returned as the indexes to map. Only applies when a
+     * non-suffix name token remains after the run, so a segment that is nothing
+     * but credentials falls through to the normal tail logic instead.
+     *
+     * @param  PartArray  $parts
+     * @return list<int>
+     */
+    private function mapLeadingSuffixRun(array $parts): array
+    {
+        /** @var list<int> $run */
+        $run = [];
+        $count = count($parts);
+        $k = 0;
+
+        for (; $k < $count; $k++) {
+            $part = $parts[$k];
+
+            if (! is_string($part) || ! $this->isSuffix($part)) {
+                break;
+            }
+
+            $run[] = $k;
+        }
+
+        if ($run === []) {
+            return [];
+        }
+
+        for (; $k < $count; $k++) {
+            $part = $parts[$k];
+
+            if (is_string($part) && ! $this->isSuffix($part)) {
+                return $run;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * an all-caps unknown token in the credential tail ("FACS", "CCRN"): not a
+     * dictionary suffix, but its casing reads as a credential. Guarded by the
+     * caller against uniform-uppercase input, where caps carry no signal.
+     */
+    private function isUnknownCredentialCandidate(string $part): bool
+    {
+        if (array_key_exists($this->getKey($part), $this->suffixes)) {
+            return false;
+        }
+
+        // a bracket/quote-wrapped token is a nickname or aside ("(JJ)"), not a
+        // credential; those are resolved by later mappers, so leave them be.
+        if (preg_match('/[()\[\]{}<>"\']/', $part) === 1) {
+            return false;
+        }
+
+        if (! Text::isUpperCase($part)) {
+            return false;
+        }
+
+        return mb_strlen(Text::letters($part), 'UTF-8') >= 2;
+    }
+
+    /**
+     * true when every unmapped cased token is uppercase, i.e. the input casing
+     * gives no signal (all-caps registry data). Mirrors
+     * InitialMapper::isUniformUpperContext so the two casing gates agree.
+     *
+     * @param  PartArray  $parts
+     */
+    private function isUniformUpperContext(array $parts): bool
+    {
+        $hasUpper = false;
+
+        foreach ($parts as $part) {
+            if ($part instanceof AbstractPart) {
+                continue;
+            }
+
+            $letters = Text::letters($part);
+
+            if ($letters === '') {
+                continue;
+            }
+
+            if (mb_strtoupper($letters, 'UTF-8') !== $letters) {
+                return false;
+            }
+
+            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
+                $hasUpper = true;
+            }
+        }
+
+        return $hasUpper;
+    }
+
     private function isTailNoise(string $part): bool
     {
         if (isset(self::TAIL_NOISE_KEYS[$this->getKey($part)])) {
@@ -268,20 +415,13 @@ class SuffixMapper extends AbstractMapper
             return false;
         }
 
-        $letters = preg_replace('/[^\p{L}]/u', '', $previous) ?? '';
+        $letters = Text::letters($previous);
 
         return mb_strlen($letters, 'UTF-8') === 1;
     }
 
     protected function isUpperCase(string $part): bool
     {
-        $letters = preg_replace('/[^\p{L}]/u', '', $part) ?? '';
-
-        if ($letters === '') {
-            return false;
-        }
-
-        return $letters === mb_strtoupper($letters, 'UTF-8')
-            && $letters !== mb_strtolower($letters, 'UTF-8');
+        return Text::isUpperCase($part);
     }
 }

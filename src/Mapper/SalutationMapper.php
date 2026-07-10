@@ -20,15 +20,15 @@ class SalutationMapper extends AbstractMapper
     private array $multiWord = [];
 
     /**
-     * @param  array<string, string>  $salutations
+     * @param  array<int|string, string>  $salutations
      */
     public function __construct(
         protected array $salutations,
         protected int $maxIndex = 0,
     ) {
         foreach ($salutations as $key => $salutation) {
-            if (str_contains($key, ' ')) {
-                $this->multiWord[] = [explode(' ', $key), $salutation];
+            if (str_contains((string) $key, ' ')) {
+                $this->multiWord[] = [explode(' ', (string) $key), $salutation];
             }
         }
     }
@@ -68,13 +68,25 @@ class SalutationMapper extends AbstractMapper
     {
         $current = $parts[$start];
 
-        if (is_string($current) && $this->isSalutation($current)) {
-            $parts[$start] = new Salutation($current, $this->salutations[$this->getKey($current)]);
+        if (! is_string($current)) {
+            return $parts;
+        }
+
+        $currentKey = $this->getKey($current);
+
+        if (array_key_exists($currentKey, $this->salutations)) {
+            $parts[$start] = new Salutation($current, $this->salutations[$currentKey]);
 
             return $parts;
         }
 
         foreach ($this->multiWord as [$keys, $salutation]) {
+            // a multi-word match requires the first pattern word to key-equal the
+            // current token, so skip the slice+compare when it can't.
+            if ($keys[0] !== $currentKey) {
+                continue;
+            }
+
             $length = count($keys);
 
             $subset = array_slice($parts, $start, $length);

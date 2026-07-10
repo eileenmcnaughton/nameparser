@@ -48,6 +48,22 @@ class GermanParserTest extends TestCase
                     'lastname' => 'von Stein',
                 ],
             ],
+            [
+                'Friedrich Wilhelm 2.',
+                [
+                    'firstname' => 'Friedrich',
+                    'lastname' => 'Wilhelm',
+                    'suffix' => '2.',
+                ],
+            ],
+            [
+                'Otto von Bismarck II',
+                [
+                    'firstname' => 'Otto',
+                    'lastname' => 'von Bismarck',
+                    'suffix' => 'II',
+                ],
+            ],
         ];
     }
 

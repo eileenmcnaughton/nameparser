@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Text;
 
 /**
  * @phpstan-type PartArray array<int, AbstractPart|string>
@@ -59,10 +60,6 @@ abstract class AbstractMapper
      */
     protected function getKey(string $word): string
     {
-        $word = str_replace('.', '', $word);
-        $word = trim($word, " \r\n\t\"'()[]{}<>");
-        $word = rtrim($word, ',;:)');
-
-        return mb_strtolower($word, 'UTF-8');
+        return Text::key($word);
     }
 }

@@ -15,7 +15,7 @@ use Iliaal\NameParser\Part\Suffix;
 class LastnameMapper extends AbstractMapper
 {
     /**
-     * @param  array<string, string>  $prefixes
+     * @param  array<int|string, string>  $prefixes
      */
     public function __construct(
         protected array $prefixes,
@@ -203,7 +203,10 @@ class LastnameMapper extends AbstractMapper
                 break;
             }
 
-            if ($part instanceof Suffix) {
+            // a lone suffix or salutation is not a surname: "Dr., John" keeps
+            // "Dr." a Salutation rather than promoting it to Lastname when the
+            // surname segment carried no actual name token
+            if ($part instanceof Suffix || $part instanceof Salutation) {
                 continue;
             }
 

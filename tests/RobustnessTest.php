@@ -31,6 +31,30 @@ class RobustnessTest extends TestCase
         $this->assertSame("\u{00C9}", $name->getLastname());
     }
 
+    public function testCaselessScriptGivenNameIsNotSplitIntoInitials(): void
+    {
+        // Han and Hebrew are caseless, so the all-uppercase split gate must not
+        // fire: the two-character given name stays whole with no bogus initials.
+        $han = (new Parser())->parse("Wang, \u{674E}\u{660E}");
+        $this->assertSame("\u{674E}\u{660E}", $han->getFirstname());
+        $this->assertSame('Wang', $han->getLastname());
+        $this->assertSame('', $han->getInitials());
+
+        $hebrew = (new Parser())->parse("Cohen, \u{05DC}\u{05D9}");
+        $this->assertSame("\u{05DC}\u{05D9}", $hebrew->getFirstname());
+        $this->assertSame('Cohen', $hebrew->getLastname());
+        $this->assertSame('', $hebrew->getInitials());
+    }
+
+    public function testLoneCaselessGivenCharIsFirstNameNotInitial(): void
+    {
+        $name = (new Parser())->parse("Wang, \u{674E}");
+
+        $this->assertSame("\u{674E}", $name->getFirstname());
+        $this->assertSame('Wang', $name->getLastname());
+        $this->assertSame('', $name->getInitials());
+    }
+
     public function testTrailingCommaCredentialsAreNotDropped(): void
     {
         $name = (new Parser())->parse('Smith, John, MD, PhD');
@@ -76,6 +100,36 @@ class RobustnessTest extends TestCase
     {
         $this->assertSame('John Smith', (string) (new Parser())->parse('John Smith'));
         $this->assertSame('Bob', (new Parser())->parse('John (Bob) Smith')->getNickname());
+    }
+
+    public function testSpacedNicknameParenthesesYieldCleanNickname(): void
+    {
+        $name = (new Parser())->parse('John ( Bob ) Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('Bob', $name->getNickname());
+    }
+
+    public function testElidedDutchParticleIsNotTreatedAsNickname(): void
+    {
+        $name = (new Parser())->parse("Gerard 't Hooft");
+
+        $this->assertSame('Gerard', $name->getFirstname());
+        $this->assertSame('Hooft', $name->getLastname());
+        $this->assertSame('', $name->getNickname());
+        $this->assertSame('', $name->getInitials());
+        // the elided particle survives verbatim; the pipeline title-cases it to 'T
+        $this->assertSame("'T", $name->getMiddlename());
+    }
+
+    public function testSymmetricQuoteNicknameStillExtracted(): void
+    {
+        $name = (new Parser())->parse("John 'Bob' Smith");
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('Bob', $name->getNickname());
     }
 
     public function testCustomWhitespaceTrimsEdges(): void
@@ -135,6 +189,47 @@ class RobustnessTest extends TestCase
         ];
     }
 
+    /**
+     * a degenerate whole-string input (blank or bare punctuation) yields an
+     * all-empty Name: every toArray() key is present as '' and nothing warns or
+     * throws, so one malformed cell cannot abort a batch import (failOnWarning
+     * turns any stray warning into a failure).
+     */
+    #[DataProvider('degenerateInputProvider')]
+    public function testDegenerateInputYieldsAllEmptyName(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $expected = [
+            'salutation' => '',
+            'firstname' => '',
+            'initials' => '',
+            'middlename' => '',
+            'lastname_prefix' => '',
+            'lastname' => '',
+            'suffix' => '',
+            'nickname' => '',
+            'given_name' => '',
+            'full_name' => '',
+        ];
+
+        $this->assertSame($expected, $name->toArray(), "toArray for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function degenerateInputProvider(): array
+    {
+        return [
+            'empty'        => [''],
+            'spaces only'  => ['   '],
+            'bare comma'   => [','],
+            'spaced comma' => [' , '],
+            'double comma' => [',,'],
+        ];
+    }
+
     public function testCommaSegmentWithLoneDelimiterKeepsSurname(): void
     {
         $name = (new Parser())->parse('Smith, (');
@@ -161,5 +256,17 @@ class RobustnessTest extends TestCase
         // the full multi-word salutation still matches
         $full = $parser->parse('Her Honour Mary Smith');
         $this->assertSame('Her Honour', $full->getSalutation());
+    }
+
+    /**
+     * an empty whitespace set collapses nothing and must not emit an E_WARNING
+     * from a degenerate "/[]+/" pattern (failOnWarning would catch it)
+     */
+    public function testEmptyWhitespaceSetDoesNotWarn(): void
+    {
+        $name = (new Parser())->setWhitespace('')->parse('John Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
     }
 }

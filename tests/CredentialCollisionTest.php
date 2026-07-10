@@ -176,4 +176,108 @@ class CredentialCollisionTest extends TestCase
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
+
+    /**
+     * An unknown all-caps credential ("FACS", "CCRN") next to a real dictionary
+     * credential no longer breaks the tail scan: the whole run is stripped to
+     * the suffix, leaving no phantom initials or middle name. The casing is the
+     * signal, so this only fires when the input is not uniform-uppercase.
+     *
+     * @return array<string, array{string, string, string, string, string, string}>
+     */
+    public static function unknownCredentialProvider(): array
+    {
+        return [
+            // input, first, middle, last, initials, suffix
+            'space unknown after known'        => ['John Smith MD FACS', 'John', '', 'Smith', '', 'MD FACS'],
+            'space nursing credential run'     => ['Jane Doe RN BSN CCRN', 'Jane', '', 'Doe', '', 'RN BSN CCRN'],
+            'comma unknown after known'        => ['Garcia, Maria, MD, FACS', 'Maria', '', 'Garcia', '', 'MD FACS'],
+            'comma credential-only unknown run' => ['John Smith, MD, FACS', 'John', '', 'Smith', '', 'MD FACS'],
+            // the phantom-initials bug: a credential-only segment before the
+            // given name no longer leaks into the initials field
+            'comma credential before given'    => ['Smith, MD, John', 'John', '', 'Smith', '', 'MD'],
+            'comma ambiguous credential keeps middle' => ['Smith, John, DO, Robert', 'John', 'Robert', 'Smith', '', 'DO'],
+            'leading credential run in given'  => ['Smith, MD John', 'John', '', 'Smith', '', 'MD'],
+        ];
+    }
+
+    #[DataProvider('unknownCredentialProvider')]
+    public function testUnknownCredentialsAreStrippedWithoutLeakingIntoNameFields(
+        string $input,
+        string $first,
+        string $middle,
+        string $last,
+        string $initials,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    /**
+     * Boundary cases where the unknown-credential heuristic deliberately does
+     * NOT fire, locked to their current output so the conservative behavior is
+     * intentional, not accidental:
+     *  - uniform-uppercase input carries no casing signal, so an unknown token
+     *    breaks the scan exactly as before;
+     *  - an unknown credential with no dictionary credential to anchor it is
+     *    left untouched (it becomes a surname), a documented limitation.
+     *
+     * @return array<string, array{string, string, string, string, string}>
+     */
+    public static function unknownCredentialSuppressedProvider(): array
+    {
+        return [
+            // input, first, middle, last, suffix
+            'uniform caps breaks the scan'   => ['JANE DOE RN BSN CCRN', 'Jane', 'Doe Rn Bsn', 'Ccrn', ''],
+            'no dictionary anchor to ride on' => ['Jane Doe FACS', 'Jane', 'Doe', 'Facs', ''],
+            'trailing plain name not stripped' => ['Jane Doe Robert', 'Jane', 'Doe', 'Robert', ''],
+        ];
+    }
+
+    #[DataProvider('unknownCredentialSuppressedProvider')]
+    public function testUnknownCredentialHeuristicStaysConservative(
+        string $input,
+        string $first,
+        string $middle,
+        string $last,
+        string $suffix,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($middle, $name->getMiddlename(), "middle name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    /**
+     * an all-caps "MS" next to another credential reads as a credential, not the
+     * "Ms." salutation
+     */
+    public function testAllCapsAmbiguousCredentialIsNotSalutation(): void
+    {
+        $name = (new Parser())->parse('Doe, MS RN');
+
+        $this->assertSame('', $name->getSalutation(), 'no salutation');
+        $this->assertSame('MS RN', $name->getSuffix());
+        $this->assertSame('Doe', $name->getLastname());
+    }
+
+    /**
+     * title-case "Ms" before a given name is still the salutation
+     */
+    public function testTitleCaseSalutationBeforeGivenNamePreserved(): void
+    {
+        $name = (new Parser())->parse('Smith, Ms John');
+
+        $this->assertSame('Ms.', $name->getSalutation());
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
 }

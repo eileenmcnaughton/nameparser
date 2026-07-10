@@ -63,4 +63,91 @@ class SurnameFirstTest extends TestCase
         $this->assertSame('Mao', $name->getFirstname());
         $this->assertSame('Zedong', $name->getLastname());
     }
+
+    /**
+     * a leading salutation must not be shifted away as the surname: it is peeled
+     * off and the first real token becomes the surname
+     */
+    public function testLeadingSalutationIsNotSurname(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('Dr. Kim Jong Un');
+
+        $this->assertSame('Dr.', $name->getSalutation());
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Un', $name->getMiddlename());
+    }
+
+    public function testLeadingMultiWordSalutationIsPeeled(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('His Honour Kim Jong Un');
+
+        $this->assertSame('His Honour', $name->getSalutation());
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Un', $name->getMiddlename());
+    }
+
+    /**
+     * a credential-only comma tail leaves an empty given segment; surname-first
+     * order must be preserved for the surname portion rather than falling back
+     * to Western order
+     */
+    public function testCredentialOnlyTailKeepsSurnameFirstOrder(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('Kim Jong Un, MD');
+
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Un', $name->getMiddlename());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    public function testExplicitCommaGivenStillWinsUnderSurnameFirst(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('Kim, Jong');
+
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Kim', $name->getLastname());
+    }
+
+    /**
+     * a comma-less space-form name with a trailing credential: the credential is
+     * peeled to the suffix and the surname-first order is preserved for the rest
+     */
+    public function testSpaceFormCredentialTailIsPeeled(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('Kim Jong Un MD');
+
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Un', $name->getMiddlename());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    /**
+     * surname-first takes the first token as the surname verbatim, so a Western
+     * particle-led name misparses by design: 'van' becomes the surname ('Van'),
+     * not a prefix. This locks the documented first-token limitation.
+     */
+    public function testParticleLeadingInputHitsFirstTokenLimitation(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('van Gogh Vincent');
+
+        $this->assertSame('Van', $name->getLastname());
+        $this->assertSame('Gogh', $name->getFirstname());
+        $this->assertSame('Vincent', $name->getMiddlename());
+    }
+
+    public function testIsSurnameFirstGetterRoundTrips(): void
+    {
+        $parser = new Parser();
+        $this->assertFalse($parser->isSurnameFirst());
+
+        $parser->setSurnameFirst(true);
+        $this->assertTrue($parser->isSurnameFirst());
+
+        $parser->setSurnameFirst(false);
+        $this->assertFalse($parser->isSurnameFirst());
+    }
 }

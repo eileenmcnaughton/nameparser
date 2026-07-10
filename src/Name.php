@@ -22,6 +22,9 @@ class Name
     /**
      * constructor takes the array of parts this name consists of
      *
+     * raw string parts are retained in getParts() but ignored by every getter
+     * and by export(): the getters only ever read AbstractPart instances.
+     *
      * @param  array<int, AbstractPart|string>|null  $parts
      */
     public function __construct(?array $parts = null)
@@ -31,6 +34,11 @@ class Name
         }
     }
 
+    /**
+     * the rendered string drops the comma structure and is not guaranteed to
+     * re-parse to the same fields (e.g. a surname-plus-credential row); it is a
+     * display form, not a round-trippable serialization
+     */
     public function __toString(): string
     {
         return implode(' ', $this->getAll(true));
@@ -39,10 +47,13 @@ class Name
     /**
      * set the parts this name consists of
      *
+     * raw string parts are retained in getParts() but ignored by every getter
+     * and by export(): the getters only ever read AbstractPart instances.
+     *
      * @param  array<int, AbstractPart|string>  $parts
      * @return $this
      */
-    public function setParts(array $parts): Name
+    public function setParts(array $parts): static
     {
         $this->parts = $parts;
 
@@ -64,7 +75,7 @@ class Name
      *
      * @return $this
      */
-    public function setSource(string $source): Name
+    public function setSource(string $source): static
     {
         $this->source = $source;
 
@@ -72,10 +83,23 @@ class Name
     }
 
     /**
+     * the normalized input this name was parsed from, or null when none was
+     * recorded (e.g. a manually constructed Name)
+     */
+    public function getSource(): ?string
+    {
+        return $this->source;
+    }
+
+    /**
      * advisory confidence signal for this parse, derived from the same input
      * the parser saw; falls back to the reconstructed name when no source was
      * recorded (e.g. a manually constructed Name). parse() is unaffected: this
      * is a read-only check the caller opts into.
+     *
+     * The reconstruction fallback sees normalized casing, so it generally
+     * cannot flag uniform-case ambiguity; parse via Parser (which records the
+     * source) when that signal matters.
      *
      * @return array{ambiguous: bool, notes: list<string>}
      */
@@ -89,6 +113,9 @@ class Name
      * always present, empty string when the part is absent. Unlike getAll(),
      * which omits empties and varies its keys, this is safe to consume without
      * existence checks.
+     *
+     * Note the `lastname` value already contains any prefix; `lastname_prefix`
+     * is a convenience extract, not a component to prepend to `lastname`.
      *
      * @return array{salutation: string, firstname: string, initials: string, middlename: string, lastname_prefix: string, lastname: string, suffix: string, nickname: string, given_name: string, full_name: string}
      */
@@ -128,7 +155,8 @@ class Name
             $method = 'get' . ucfirst($key);
             /** @var callable(): string $callable */
             $callable = [$this, $method];
-            if ($value = $callable(...$args)) {
+            $value = $callable(...$args);
+            if ($value !== '') {
                 $results[$key] = $value;
             }
         }
@@ -147,6 +175,10 @@ class Name
 
     /**
      * get the given name followed by the last name (including any prefixes)
+     *
+     * like __toString(), the rendered string drops comma structure and is not
+     * guaranteed to re-parse to the same fields (e.g. a surname-plus-credential
+     * row); it is a display form, not a round-trippable serialization
      */
     public function getFullName(): string
     {
@@ -233,28 +265,19 @@ class Name
      */
     protected function export(string $type, bool $strict = false): string
     {
+        $className = self::PARTS_NAMESPACE . '\\' . $type;
         $matched = [];
 
         foreach ($this->parts as $part) {
-            if ($part instanceof AbstractPart && $this->isType($part, $type, $strict)) {
+            if (! $part instanceof AbstractPart) {
+                continue;
+            }
+
+            if ($strict ? $part::class === $className : $part instanceof $className) {
                 $matched[] = $part->normalize();
             }
         }
 
         return implode(' ', $matched);
-    }
-
-    /**
-     * helper method to check if a part is of the given type
-     */
-    protected function isType(AbstractPart $part, string $type, bool $strict = false): bool
-    {
-        $className = self::PARTS_NAMESPACE . '\\' . $type;
-
-        if ($strict) {
-            return $part::class === $className;
-        }
-
-        return is_a($part, $className);
     }
 }

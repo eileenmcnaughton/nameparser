@@ -17,9 +17,8 @@ class Confidence
      */
     public static function assess(string $original): array
     {
-        $letters = preg_replace('/[^\p{L}]/u', '', $original) ?? '';
-        $uniformUpper = $letters !== '' && $letters === mb_strtoupper($letters, 'UTF-8')
-            && $letters !== mb_strtolower($letters, 'UTF-8');
+        $letters = Text::letters($original);
+        $uniformUpper = Text::isUpperCase($original);
         $uniformLower = $letters !== '' && $letters === mb_strtolower($letters, 'UTF-8')
             && $letters !== mb_strtoupper($letters, 'UTF-8');
 
@@ -27,12 +26,12 @@ class Confidence
 
         $notes = [];
         foreach ($tokens as $token) {
-            $key = mb_strtolower(str_replace('.', '', $token), 'UTF-8');
+            $key = Text::key($token);
             if (! isset(SuffixMapper::AMBIGUOUS_KEYS[$key])) {
                 continue;
             }
 
-            $tokenLetters = preg_replace('/[^\p{L}]/u', '', $token) ?? '';
+            $tokenLetters = Text::letters($token);
             $tokenLower = $tokenLetters !== '' && $tokenLetters === mb_strtolower($tokenLetters, 'UTF-8')
                 && $tokenLetters !== mb_strtoupper($tokenLetters, 'UTF-8');
 

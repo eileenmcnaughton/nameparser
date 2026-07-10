@@ -174,6 +174,25 @@ Two-token surnames without particles are also ambiguous in space-separated names
 keeps the existing compound-surname heuristic for two-character terminal
 surnames.
 
+Unknown trailing credentials follow the same casing rule as the ambiguous
+tokens. When a known credential anchors the tail and the input is mixed-case, an
+adjacent unknown all-caps token is kept as a credential too: `John Smith MD FACS`
+keeps both `MD` and `FACS` in the suffix. Uniform all-caps rows cannot do this;
+with no case signal an unknown token could equally be a surname, so it stays in
+the name.
+
+`getFullName()` and `__toString()` (and `toArray()['full_name']`) are display
+forms. They drop the comma structure and are not guaranteed to re-parse to the
+same fields (for example a surname-plus-credential row), so treat them as output,
+not as a round-trippable serialization.
+
+### Performance
+
+Reuse one `Parser` across a batch rather than constructing a new one per row.
+The parser memoizes its merged dictionaries, its mapper pipeline, and the
+comma-segment sub-parsers on first use, so a shared instance amortizes that setup
+across every `parse()` call.
+
 ## Development
 
 ```bash

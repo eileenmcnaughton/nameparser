@@ -4,6 +4,7 @@ namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Initial;
+use Iliaal\NameParser\Text;
 
 /**
  * single letter, possibly followed by a period
@@ -12,10 +13,24 @@ use Iliaal\NameParser\Part\Initial;
  */
 class InitialMapper extends AbstractMapper
 {
+    private ?bool $uniformUpperOverride = null;
+
     public function __construct(
         private int $combinedMax = 2,
         protected bool $matchLastPart = false,
     ) {}
+
+    /**
+     * force the uniform-uppercase verdict instead of deriving it from the
+     * local part list. The comma pipeline sets this so the split gate reads the
+     * whole-input casing signal, not just the given segment ("Smith, JM" must
+     * see that "Smith" proves the input is mixed-case). Null restores
+     * self-derivation. Always reset after the parse; the mapper is memoized.
+     */
+    public function setUniformUpperOverride(?bool $override): void
+    {
+        $this->uniformUpperOverride = $override;
+    }
 
     /**
      * @param  PartArray  $parts
@@ -49,8 +64,16 @@ class InitialMapper extends AbstractMapper
                 $stripped = str_replace('.', '', $part);
                 $length = mb_strlen($stripped, 'UTF-8');
 
-                if ($length > 1 && $length <= $this->combinedMax) {
-                    array_splice($parts, $k, 1, mb_str_split($stripped));
+                // caseless scripts (CJK, Hebrew) are trivially "uppercase", so the
+                // gate above passes for a 2-char given name like "李明". Only split
+                // when the token carries genuine cased capitals, otherwise the name
+                // is shredded into bogus initials.
+                if (
+                    $length > 1
+                    && $length <= $this->combinedMax
+                    && $stripped !== mb_strtolower($stripped, 'UTF-8')
+                ) {
+                    array_splice($parts, $k, 1, mb_str_split($stripped, 1, 'UTF-8'));
                     $last = count($parts) - 1;
                     $part = $parts[$k];
                 }
@@ -68,11 +91,26 @@ class InitialMapper extends AbstractMapper
     {
         $length = mb_strlen($part, 'UTF-8');
 
+        // a caseless single character ("李") is a whole name, not an initial; an
+        // initial is a genuinely cased letter ("É", "J"). Casing is the signal.
         if ($length === 1) {
-            return true;
+            return $this->isCased($part);
         }
 
-        return $length === 2 && str_ends_with($part, '.');
+        return $length === 2 && str_ends_with($part, '.') && $this->isCased($part);
+    }
+
+    /**
+     * true when the token's letters have a distinct upper/lower form, i.e. they
+     * carry a case signal (Latin, Greek, Cyrillic) rather than a caseless script
+     * (Han, Hebrew, Arabic).
+     */
+    private function isCased(string $part): bool
+    {
+        $letters = Text::letters($part);
+
+        return $letters !== ''
+            && mb_strtolower($letters, 'UTF-8') !== mb_strtoupper($letters, 'UTF-8');
     }
 
     /**
@@ -85,6 +123,10 @@ class InitialMapper extends AbstractMapper
      */
     private function isUniformUpperContext(array $parts): bool
     {
+        if ($this->uniformUpperOverride !== null) {
+            return $this->uniformUpperOverride;
+        }
+
         $hasUpper = false;
 
         foreach ($parts as $part) {
@@ -92,7 +134,7 @@ class InitialMapper extends AbstractMapper
                 continue;
             }
 
-            $letters = preg_replace('/[^\p{L}]/u', '', $part) ?? '';
+            $letters = Text::letters($part);
 
             if ($letters === '') {
                 continue;

@@ -623,6 +623,44 @@ class ParserTest extends TestCase
         $this->assertNotSame('Jim', $parser->parse('(Jim)')->getNickname());
     }
 
+    public function testMultibyteNicknameDelimiterExtractsNickname(): void
+    {
+        $parser = new Parser();
+        $parser->setNicknameDelimiters(['«' => '»']);
+
+        $name = $parser->parse('Charles «Bob» Dixon');
+
+        $this->assertSame('Charles', $name->getFirstname());
+        $this->assertSame('Dixon', $name->getLastname());
+        $this->assertSame('Bob', $name->getNickname());
+    }
+
+    public function testMultiCharNicknameDelimiterExtractsNickname(): void
+    {
+        $parser = new Parser();
+        $parser->setNicknameDelimiters(['<<' => '>>']);
+
+        $name = $parser->parse('Charles <<Bob>> Dixon');
+
+        $this->assertSame('Charles', $name->getFirstname());
+        $this->assertSame('Dixon', $name->getLastname());
+        $this->assertSame('Bob', $name->getNickname());
+    }
+
+    public function testEmptyStringNicknameDelimiterParsesWithoutWarning(): void
+    {
+        // an empty-string delimiter key would compile to a degenerate regexp and
+        // warn per token; it must be filtered so parsing proceeds normally.
+        // phpunit.xml sets failOnWarning, so a warning here fails the test.
+        $parser = new Parser();
+        $parser->setNicknameDelimiters(['' => '']);
+
+        $name = $parser->parse('John Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
     public function testSetMaxSalutationIndex(): void
     {
         $parser = new Parser();
@@ -707,5 +745,17 @@ class ParserTest extends TestCase
 
         $this->assertSame('Herr', $parser->parse('Herr Schmidt')->getSalutation());
         $this->assertSame('Herr', $parser->parse('Herr Schmidt, Bernd')->getSalutation());
+    }
+
+    public function testFluentSettersReturnSameInstance(): void
+    {
+        $parser = new Parser();
+
+        $this->assertSame($parser, $parser->setWhitespace(" \t"));
+        $this->assertSame($parser, $parser->setNicknameDelimiters(['(' => ')']));
+        $this->assertSame($parser, $parser->setMaxSalutationIndex(3));
+        $this->assertSame($parser, $parser->setMaxCombinedInitials(2));
+        $this->assertSame($parser, $parser->setSurnameFirst(true));
+        $this->assertSame($parser, $parser->setMappers([]));
     }
 }

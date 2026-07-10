@@ -14,7 +14,7 @@ use Iliaal\NameParser\Part\MiddlenamePrefix;
 class MiddlenameMapper extends AbstractMapper
 {
     /**
-     * @param  array<string, string>  $prefixes
+     * @param  array<int|string, string>  $prefixes
      */
     public function __construct(
         protected bool $mapWithoutLastname = false,

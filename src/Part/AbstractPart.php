@@ -10,6 +10,13 @@ abstract class AbstractPart
     protected string $value = '';
 
     /**
+     * memoized camelcase result for the current value; parts are effectively
+     * immutable after mapping, so this is computed at most once and cleared
+     * whenever the value changes
+     */
+    private ?string $camelcaseCache = null;
+
+    /**
      * constructor allows passing the value to wrap
      */
     public function __construct(string|AbstractPart $value)
@@ -28,6 +35,7 @@ abstract class AbstractPart
         }
 
         $this->value = $value;
+        $this->camelcaseCache = null;
 
         return $this;
     }
@@ -54,12 +62,16 @@ abstract class AbstractPart
      */
     protected function camelcase(string $word): string
     {
+        if ($this->camelcaseCache !== null) {
+            return $this->camelcaseCache;
+        }
+
         if (preg_match('/\p{L}(\p{Lu}*\p{Ll}\p{Ll}*\p{Lu}|\p{Ll}*\p{Lu}\p{Lu}*\p{Ll})\p{L}*/u', $word)) {
-            return $word;
+            return $this->camelcaseCache = $word;
         }
 
         // preg_replace_callback returns null on regex error; fall back to the input.
-        return preg_replace_callback('/[\p{L}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
+        return $this->camelcaseCache = preg_replace_callback('/[\p{L}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
     }
 
     /**
