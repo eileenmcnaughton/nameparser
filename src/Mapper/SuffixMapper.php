@@ -141,6 +141,10 @@ class SuffixMapper extends AbstractMapper
         $rewritten = [];
 
         for ($i = 0; $i < $firstSuffixIndex; $i++) {
+            if (isset($noiseIndexes[$i])) {
+                continue;
+            }
+
             $rewritten[] = $parts[$i];
         }
 
@@ -227,7 +231,16 @@ class SuffixMapper extends AbstractMapper
             return false;
         }
 
-        return ! in_array($this->getKey($part), ['junior', 'senior'], true);
+        $key = $this->getKey($part);
+
+        // a bare single-letter roman numeral right after the first name is far
+        // more likely a surname or stray initial ("Malcolm X") than a suffix,
+        // so the relaxed slot only takes multi-character suffix keys
+        if (mb_strlen($key, 'UTF-8') < 2) {
+            return false;
+        }
+
+        return ! in_array($key, ['junior', 'senior'], true);
     }
 
     private function canSkipInterruptedTailAtIndex(int $index): bool

@@ -49,6 +49,7 @@ class RobustnessTest extends TestCase
         return [
             'semicolon' => ['John Smith MD;', 'MD'],
             'paren' => ['John Smith MD)', 'MD'],
+            'comma' => ['John Smith MD,', 'MD'],
         ];
     }
 
@@ -60,6 +61,15 @@ class RobustnessTest extends TestCase
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
         $this->assertSame($suffix, $name->getSuffix());
+    }
+
+    public function testTrailingCommaWithEmptyGivenSegmentKeepsSurnameSemantics(): void
+    {
+        $name = (new Parser())->parse('Smith,');
+
+        $this->assertSame('', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('Smith', $name->getFullName());
     }
 
     public function testToStringOmitsEmptyNicknameParentheses(): void

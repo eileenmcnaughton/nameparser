@@ -14,7 +14,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `Name::toArray()['given_name']` is now documented as first, middle, and initials only. Use `full_name` when you need the given name plus surname.
-- Custom mapper lists set with `setMappers()` now survive `setMaxCombinedInitials()`, `setMaxSalutationIndex()`, and `setNicknameDelimiters()`.
+- Custom mapper lists set with `setMappers()` now survive `setMaxCombinedInitials()`, `setMaxSalutationIndex()`, and `setNicknameDelimiters()`. Passing an empty list resets the parser to the default pipeline.
 
 ### Fixed
 
@@ -22,7 +22,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - All-caps short given names stay intact beside mixed-case salutations or credentials, so "JO ANDERSON PhD" keeps first name Jo.
 - Parenthetical credentials such as "Jane Doe (MD)" now parse as suffixes instead of nicknames.
 - Comma surname segments with real given names keep non-particle compound surnames and left-side suffixes, so "Hidalgo Castillo, Maria" and "Doe Jr, John" parse as expected.
-- Interrupted credential tails keep recognized credentials in the suffix while preserving name-like bridge tokens; placeholder/punctuation noise such as "Unknown" or "-" is stripped from the tail.
+- Interrupted credential tails keep recognized credentials in the suffix while preserving name-like bridge tokens; placeholder/punctuation noise such as "Unknown" or "-" is stripped from the tail, including immediately before the first credential ("Jane Doe Unknown MD").
+- Bare single-letter roman numerals stay part of the name instead of becoming a suffix, so "Malcolm X" keeps X as the last name. Multi-letter forms ("John III") still parse as suffixes.
+- A trailing comma with nothing after it ("John Smith MD,") no longer appends a trailing space to the first name.
 - Nicknames preserve internal apostrophes, so "John (O'Brien) Smith" keeps O'Brien.
 - Single-token salutations such as "Mr" now parse as salutations under the default salutation scan.
 - Trailing punctuation no longer blocks credential lookup for tokens such as "MD;" and "MD)".

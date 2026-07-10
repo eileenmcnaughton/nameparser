@@ -140,6 +140,13 @@ class Parser
      */
     protected function parseSplitName(string $surname, string $given): Name
     {
+        // a trailing comma ("John Smith MD,") produces an empty given segment;
+        // parsing it would emit an empty Firstname part that pollutes exports
+        // with a trailing space
+        if (trim($given) === '') {
+            return new Name($this->getFirstSegmentParser()->parse($surname)->getParts());
+        }
+
         $givenName = $this->getSecondSegmentParser()->parse($given);
         $surnameParser = $this->hasGivenNameParts($givenName)
             ? $this->getSurnameSegmentParser()
@@ -227,12 +234,14 @@ class Parser
      * lists, so a custom list set here does not affect comma forms. The language
      * dictionaries do propagate to those sub-parsers.
      *
+     * An empty list resets the parser to the default pipeline.
+     *
      * @param  array<int, \Iliaal\NameParser\Mapper\AbstractMapper>  $mappers
      */
     public function setMappers(array $mappers): Parser
     {
         $this->mappers = $mappers;
-        $this->customMappers = true;
+        $this->customMappers = $mappers !== [];
 
         return $this;
     }

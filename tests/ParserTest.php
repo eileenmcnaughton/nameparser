@@ -690,6 +690,15 @@ class ParserTest extends TestCase
         $this->assertSame('', $parser->parse('John Smith')->getLastname());
     }
 
+    public function testSetMappersWithEmptyListRestoresDefaultPipeline(): void
+    {
+        $parser = (new Parser())->setMappers([new FirstnameMapper()]);
+        $this->assertSame('', $parser->parse('John Smith')->getLastname());
+
+        $parser->setMappers([]);
+        $this->assertSame('Smith', $parser->parse('John Smith')->getLastname());
+    }
+
     public function testParserAndSubparsersProperlyHandleLanguages(): void
     {
         $parser = new Parser([

@@ -55,6 +55,12 @@ class CredentialCollisionTest extends TestCase
             'surname Ma, comma'                   => ['Ma, Wei', 'Wei', 'Ma', ''],
             'surname Ma, two tokens'              => ['Wei Ma', 'Wei', 'Ma', ''],
 
+            // a bare single-letter roman numeral after the first name is a
+            // surname/initial, not a suffix ("Malcolm X")
+            'single-letter X stays lastname'      => ['Malcolm X', 'Malcolm', 'X', ''],
+            'single-letter V stays lastname'      => ['John V', 'John', 'V', ''],
+            'single-letter I stays lastname'      => ['Mary I', 'Mary', 'I', ''],
+
             // Census surnames colliding with roman-numeral / MBA suffixes
             'surname Ii in comma segment'         => ['Brown, Ii', 'Ii', 'Brown', ''],
             'surname Iv in comma segment'         => ['Brown, Iv', 'Iv', 'Brown', ''],
@@ -149,6 +155,9 @@ class CredentialCollisionTest extends TestCase
             'roman suffix before a name is preserved'    => ['John Smith III Robert PhD', 'John', 'Smith', 'Robert', 'III PhD'],
             'placeholder after credentials is stripped'  => ['Jane Doe MD PhD Unknown', 'Jane', '', 'Doe', 'MD PhD'],
             'punctuation between credentials is stripped' => ['Jane Doe MD - PhD', 'Jane', '', 'Doe', 'MD PhD'],
+            'placeholder before credentials is stripped'  => ['Jane Doe Unknown MD', 'Jane', '', 'Doe', 'MD'],
+            'punctuation before credentials is stripped'  => ['Jane Doe - MD', 'Jane', '', 'Doe', 'MD'],
+            'comma placeholder before credentials is stripped' => ['Smith, Jane Unknown MD', 'Jane', '', 'Smith', 'MD'],
         ];
     }
 
