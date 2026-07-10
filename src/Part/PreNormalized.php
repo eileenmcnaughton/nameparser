@@ -4,7 +4,12 @@ namespace Iliaal\NameParser\Part;
 
 /**
  * shared implementation for parts that carry a pre-normalized dictionary form
- * decided at map time, rather than deriving one via camelcase at render time
+ * decided at map time, rather than deriving one via camelcase at render time.
+ *
+ * The dictionary form is fixed at construction: an inherited setValue() call
+ * changes only the raw value, and normalize() keeps rendering the original
+ * form. That asymmetry is inherited from the released 1.x API; these parts
+ * are treated as immutable after mapping.
  */
 trait PreNormalized
 {

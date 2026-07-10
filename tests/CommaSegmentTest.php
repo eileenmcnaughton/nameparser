@@ -152,6 +152,34 @@ class CommaSegmentTest extends TestCase
      * a comma inside a matched nickname delimiter span must not be treated as
      * the surname/given separator
      */
+    public function testGivenSideNicknameKeepsItsComma(): void
+    {
+        $name = (new Parser())->parse('Smith, John (Jack, Robert)');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('Jack, Robert', $name->getNickname());
+    }
+
+    public function testQuotedNicknameWithCommaDoesNotBisect(): void
+    {
+        $name = (new Parser())->parse("John 'Bob, Jr' Doe");
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('Bob, Jr', $name->getNickname());
+    }
+
+    public function testRevertedNicknameOpenerDropsTrailingComma(): void
+    {
+        // the span's closer token is consumed as a suffix, so the opener
+        // reverts; the shielded comma must not survive in the middle name
+        $name = (new Parser())->parse('Smith, John (Jack, III)');
+
+        $this->assertSame('Jack', $name->getMiddlename());
+        $this->assertSame('III', $name->getSuffix());
+    }
+
     public function testCommaInsideNicknameDoesNotBisect(): void
     {
         $name = (new Parser())->parse('John (Bob, Jr) Doe');

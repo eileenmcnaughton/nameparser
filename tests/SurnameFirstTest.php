@@ -150,4 +150,15 @@ class SurnameFirstTest extends TestCase
         $parser->setSurnameFirst(false);
         $this->assertFalse($parser->isSurnameFirst());
     }
+
+    public function testLeadingSalutationWithCredentialTailKeepsSurname(): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse('Dr. Kim Jong Un, MD');
+
+        $this->assertSame('Dr.', $name->getSalutation());
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Un', $name->getMiddlename());
+        $this->assertSame('MD', $name->getSuffix());
+    }
 }

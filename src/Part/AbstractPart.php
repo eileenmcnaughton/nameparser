@@ -10,11 +10,13 @@ abstract class AbstractPart
     protected string $value = '';
 
     /**
-     * memoized camelcase result for the current value; parts are effectively
-     * immutable after mapping, so this is computed at most once and cleared
-     * whenever the value changes
+     * memoized camelcase result, keyed by the word it was computed for; parts
+     * are effectively immutable after mapping, so this is computed at most once
+     * per value and cleared whenever the value changes
      */
     private ?string $camelcaseCache = null;
+
+    private ?string $camelcaseCacheWord = null;
 
     /**
      * constructor allows passing the value to wrap
@@ -36,6 +38,7 @@ abstract class AbstractPart
 
         $this->value = $value;
         $this->camelcaseCache = null;
+        $this->camelcaseCacheWord = null;
 
         return $this;
     }
@@ -62,11 +65,23 @@ abstract class AbstractPart
      */
     protected function camelcase(string $word): string
     {
-        if ($this->camelcaseCache !== null) {
+        if ($this->camelcaseCache !== null && $this->camelcaseCacheWord === $word) {
             return $this->camelcaseCache;
         }
 
-        if (preg_match('/\p{L}(\p{Lu}*\p{Ll}\p{Ll}*\p{Lu}|\p{Ll}*\p{Lu}\p{Lu}*\p{Ll})\p{L}*/u', $word)) {
+        $this->camelcaseCacheWord = $word;
+
+        // the mixed-case pattern backtracks quadratically without the PCRE JIT
+        // when a long run fails at every start position (single-case and
+        // Title-case shapes alike), so it only runs on tokens short enough for
+        // quadratic to be irrelevant — no real name comes close to the bound —
+        // and only when both letter cases are present (it cannot match
+        // otherwise). Oversized tokens go straight to the title-casing path.
+        $isMixedCase = strlen($word) <= 1024
+            && $word !== mb_strtoupper($word, 'UTF-8')
+            && $word !== mb_strtolower($word, 'UTF-8');
+
+        if ($isMixedCase && preg_match('/\p{L}(\p{Lu}*\p{Ll}\p{Ll}*\p{Lu}|\p{Ll}*\p{Lu}\p{Lu}*\p{Ll})\p{L}*/u', $word)) {
             return $this->camelcaseCache = $word;
         }
 

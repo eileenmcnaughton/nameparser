@@ -25,6 +25,14 @@ class NicknameMapper extends AbstractMapper
     protected string $regexp;
 
     /**
+     * per-map() memo: last part index whose token ends with the given symmetric
+     * closer, or null when none does
+     *
+     * @var array<string, int|null>
+     */
+    private array $lastCloserIndex = [];
+
+    /**
      * @param  array<string, string>  $delimiters
      */
     public function __construct(array $delimiters = [])
@@ -33,13 +41,17 @@ class NicknameMapper extends AbstractMapper
             $this->delimiters = $delimiters;
         }
 
-        // an empty-string key compiles to a degenerate pattern that matches every
-        // token and warns per parse; drop it. If nothing valid remains the mapper
-        // no-ops (buildRegexp returns '').
+        // an empty-string key compiles to a degenerate pattern that matches
+        // every token and warns per parse; an invalid-UTF-8 key or value makes
+        // the /u pattern fail compilation with a warning per token. Drop both
+        // classes; if nothing valid remains the mapper no-ops (buildRegexp
+        // returns '').
         $this->delimiters = array_filter(
             $this->delimiters,
-            static fn(string $key): bool => $key !== '',
-            ARRAY_FILTER_USE_KEY
+            static fn(string $close, string $open): bool => $open !== ''
+                && mb_check_encoding($open, 'UTF-8')
+                && mb_check_encoding($close, 'UTF-8'),
+            ARRAY_FILTER_USE_BOTH
         );
 
         $this->regexp = $this->buildRegexp();
@@ -55,6 +67,8 @@ class NicknameMapper extends AbstractMapper
         if ($this->regexp === '') {
             return $parts;
         }
+
+        $this->lastCloserIndex = [];
 
         $isEncapsulated = false;
 
@@ -142,7 +156,10 @@ class NicknameMapper extends AbstractMapper
             // ("Bob Jones (" must not yield last name "Jones (").
             $open = array_key_first($pending);
             if ($open !== null && is_string($parts[$open])) {
+                // also drop a trailing comma left over from a shielded comma
+                // split ("(Jack," when the span's closer was consumed upstream)
                 $cleaned = ltrim($parts[$open], implode('', array_keys($this->delimiters)));
+                $cleaned = rtrim($cleaned, ',;');
                 if ($cleaned === '') {
                     unset($parts[$open]);
                 } else {
@@ -165,6 +182,9 @@ class NicknameMapper extends AbstractMapper
     /**
      * whether a symmetric delimiter opened at $openKey has a matching closer
      * later: the same token's tail, or a subsequent token ending with $closer.
+     * The last token index ending with each closer is precomputed per map()
+     * call, so a run of unmatched openers stays linear instead of rescanning
+     * the remaining parts for every one.
      *
      * @param  PartArray  $parts
      */
@@ -176,24 +196,21 @@ class NicknameMapper extends AbstractMapper
             return true;
         }
 
-        $seen = false;
-        foreach ($parts as $k => $part) {
-            if ($k === $openKey) {
-                $seen = true;
-
-                continue;
+        if (! array_key_exists($closer, $this->lastCloserIndex)) {
+            $last = null;
+            foreach ($parts as $k => $part) {
+                if (is_string($part)
+                    && mb_substr($part, -$closerLength, null, 'UTF-8') === $closer) {
+                    $last = $k;
+                }
             }
 
-            if (! $seen || ! is_string($part)) {
-                continue;
-            }
-
-            if (mb_substr($part, -$closerLength, null, 'UTF-8') === $closer) {
-                return true;
-            }
+            $this->lastCloserIndex[$closer] = $last;
         }
 
-        return false;
+        $last = $this->lastCloserIndex[$closer];
+
+        return $last !== null && $last > $openKey;
     }
 
     protected function buildRegexp(): string

@@ -4,6 +4,7 @@ namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Name;
 use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\Initial;
 use Iliaal\NameParser\Part\Lastname;
@@ -98,5 +99,23 @@ class NameTest extends TestCase
         $parser = new Parser();
         $name = $parser->parse('Schuler, J. Peter M.');
         $this->assertSame('J. Peter M. Schuler', $name->getFullName());
+    }
+
+    public function testSubclassIsTypeOverrideIsHonoredByGetters(): void
+    {
+        $name = new class ([new Firstname('John'), new Lastname('Smith')]) extends Name {
+            #[\Override]
+            protected function isType(AbstractPart $part, string $type, bool $strict = false): bool
+            {
+                if ($type === 'Lastname') {
+                    return false;
+                }
+
+                return parent::isType($part, $type, $strict);
+            }
+        };
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('', $name->getLastname());
     }
 }

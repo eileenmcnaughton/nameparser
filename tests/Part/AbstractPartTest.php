@@ -31,4 +31,19 @@ class AbstractPartTest extends TestCase
         $wrapped = new class ($part) extends AbstractPart {};
         $this->assertEquals('abc', $wrapped->getValue());
     }
+
+    public function testCamelcaseIsKeyedByWordNotFirstCall(): void
+    {
+        $part = new class ('irrelevant') extends Lastname {
+            /**
+             * @return list<string>
+             */
+            public function camelcaseBoth(): array
+            {
+                return [$this->camelcase('alpha'), $this->camelcase('beta')];
+            }
+        };
+
+        $this->assertSame(['Alpha', 'Beta'], $part->camelcaseBoth());
+    }
 }

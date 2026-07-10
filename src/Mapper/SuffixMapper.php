@@ -103,6 +103,7 @@ class SuffixMapper extends AbstractMapper
         /** @var array<int, true> $candidateIndexes */
         $candidateIndexes = [];
         $mappedSuffix = false;
+        $crossedBridge = false;
 
         for ($k = count($parts) - 1; $k >= 0; $k--) {
             if (isset($leadingSet[$k])) {
@@ -130,7 +131,11 @@ class SuffixMapper extends AbstractMapper
 
                 $uniformUpper ??= $this->isUniformUpperContext($parts);
 
-                if (! $uniformUpper && $this->isUnknownCredentialCandidate($part)) {
+                // a candidate is only credible inside the contiguous credential
+                // run at the tail; once a preserved name token has been crossed
+                // ("John Paul JM Smith MD"), an all-caps token is a combined
+                // initial, not a stray credential.
+                if (! $crossedBridge && ! $uniformUpper && $this->isUnknownCredentialCandidate($part)) {
                     $candidateIndexes[$k] = true;
 
                     continue;
@@ -139,6 +144,8 @@ class SuffixMapper extends AbstractMapper
                 if (! $mappedSuffix) {
                     break;
                 }
+
+                $crossedBridge = true;
 
                 continue;
             }

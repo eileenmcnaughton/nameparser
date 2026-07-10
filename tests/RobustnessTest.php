@@ -132,6 +132,39 @@ class RobustnessTest extends TestCase
         $this->assertSame('Bob', $name->getNickname());
     }
 
+    public function testMultibyteWhitespaceDoesNotCorruptSharedByteGlyphs(): void
+    {
+        // U+3000 shares lead bytes with other CJK punctuation; a bytewise
+        // pattern would eat those bytes out of unrelated glyphs
+        $parser = (new Parser())->setWhitespace("\u{3000}");
+        $name = $parser->parse("\u{7530}\u{4E2D}\u{3000}Smith\u{3002}X");
+
+        $this->assertSame("\u{7530}\u{4E2D}", $name->getFirstname());
+        $this->assertSame("Smith\u{3002}X", $name->getLastname());
+        $this->assertTrue(mb_check_encoding($name->getLastname(), 'UTF-8'));
+    }
+
+    public function testInvalidUtf8WhitespaceFallsBackToBytewiseWithoutWarnings(): void
+    {
+        // /u cannot compile a pattern containing the raw byte; the pattern
+        // drops to bytewise semantics instead of warning per parse
+        $parser = (new Parser())->setWhitespace("\xFF");
+        $name = $parser->parse("John\xFFSmith");
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
+    public function testInvalidUtf8NicknameDelimiterIsIgnoredWithoutWarnings(): void
+    {
+        // failOnWarning turns the per-token preg compile warning into a failure
+        $parser = (new Parser())->setNicknameDelimiters(["\xC3" => "\xC3"]);
+        $name = $parser->parse('John Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+    }
+
     public function testCustomWhitespaceTrimsEdges(): void
     {
         $parser = new Parser();

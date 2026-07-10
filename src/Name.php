@@ -53,7 +53,7 @@ class Name
      * @param  array<int, AbstractPart|string>  $parts
      * @return $this
      */
-    public function setParts(array $parts): static
+    public function setParts(array $parts): Name
     {
         $this->parts = $parts;
 
@@ -75,7 +75,7 @@ class Name
      *
      * @return $this
      */
-    public function setSource(string $source): static
+    public function setSource(string $source): Name
     {
         $this->source = $source;
 
@@ -265,19 +265,28 @@ class Name
      */
     protected function export(string $type, bool $strict = false): string
     {
-        $className = self::PARTS_NAMESPACE . '\\' . $type;
         $matched = [];
 
         foreach ($this->parts as $part) {
-            if (! $part instanceof AbstractPart) {
-                continue;
-            }
-
-            if ($strict ? $part::class === $className : $part instanceof $className) {
+            if ($part instanceof AbstractPart && $this->isType($part, $type, $strict)) {
                 $matched[] = $part->normalize();
             }
         }
 
         return implode(' ', $matched);
+    }
+
+    /**
+     * helper method to check if a part is of the given type
+     */
+    protected function isType(AbstractPart $part, string $type, bool $strict = false): bool
+    {
+        $className = self::PARTS_NAMESPACE . '\\' . $type;
+
+        if ($strict) {
+            return $part::class === $className;
+        }
+
+        return $part instanceof $className;
     }
 }

@@ -728,6 +728,54 @@ class ParserTest extends TestCase
         $this->assertSame('', $parser->parse('John Smith')->getLastname());
     }
 
+    public function testSubclassMayOverrideSettersWithConcreteReturnType(): void
+    {
+        // the released 1.x API declares concrete Parser returns; a subclass
+        // overriding a fluent setter with ": Parser" must keep loading
+        $parser = new class extends Parser {
+            public bool $overrideRan = false;
+
+            #[\Override]
+            public function setWhitespace(string $whitespace): Parser
+            {
+                $this->overrideRan = true;
+
+                return parent::setWhitespace($whitespace);
+            }
+        };
+
+        $parser->setWhitespace('_');
+        $this->assertTrue($parser->overrideRan);
+        $this->assertSame('John', $parser->parse('_John_Smith_')->getFirstname());
+    }
+
+    public function testSubclassMayDeclareItsOwnCustomMappersProperty(): void
+    {
+        // internal bookkeeping stays private so this declaration cannot collide
+        $parser = new class extends Parser {
+            /**
+             * @var array<int, string>
+             */
+            protected array $customMappers = [];
+        };
+
+        $this->assertSame('Smith', $parser->parse('John Smith')->getLastname());
+    }
+
+    public function testMultiCharDelimiterShieldsNicknameCommas(): void
+    {
+        $parser = (new Parser())->setNicknameDelimiters(['<<' => '>>']);
+
+        $name = $parser->parse('John <<Bob, Jr>> Doe');
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('Bob, Jr', $name->getNickname());
+
+        $comma = $parser->parse('Smith, John <<Jack, Rob>>');
+        $this->assertSame('Smith', $comma->getLastname());
+        $this->assertSame('Jack, Rob', $comma->getNickname());
+    }
+
     public function testSetMappersWithEmptyListRestoresDefaultPipeline(): void
     {
         $parser = (new Parser())->setMappers([new FirstnameMapper()]);

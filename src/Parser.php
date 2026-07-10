@@ -16,15 +16,18 @@ use Iliaal\NameParser\Part\Suffix;
 class Parser
 {
     /**
-     * asymmetric nickname delimiter pairs used to shield commas inside a
-     * bracketed nickname from the comma split; mirrors NicknameMapper's
-     * defaults minus the symmetric quotes, which cannot be paired reliably
+     * nickname delimiter pairs used to shield commas inside a delimited
+     * nickname from the comma split; mirrors NicknameMapper's defaults. The
+     * symmetric quotes pair on token boundaries only (a mid-token apostrophe
+     * is name content, not a delimiter).
      */
     private const array DEFAULT_NICKNAME_DELIMITERS = [
         '[' => ']',
         '{' => '}',
         '(' => ')',
         '<' => '>',
+        '"' => '"',
+        '\'' => '\'',
     ];
 
     private const string COMMA_PLACEHOLDER = "\x00";
@@ -36,7 +39,9 @@ class Parser
      */
     protected array $mappers = [];
 
-    protected bool $customMappers = false;
+    // private: internal bookkeeping, and a protected declaration would fatal
+    // any subclass that already declares a property with this name
+    private bool $customMappers = false;
 
     /**
      * @var array<int, LanguageInterface>
@@ -131,15 +136,14 @@ class Parser
     {
         $name = $this->normalize($name);
 
-        // split on the first comma that is not shielded inside a nickname span,
-        // so "John (Bob, Jr) Doe" is not bisected at the nickname's comma. The
-        // surname and given portions are taken from the original string, so a
-        // secondary given-side comma still separates its segments normally.
-        $commaPos = $this->firstStructuralCommaPos($name);
+        // split on commas that are not shielded inside a nickname span, so
+        // "John (Bob, Jr) Doe" is not bisected at the nickname's comma and a
+        // given-side "(Jack, Robert)" stays one segment with its comma intact
+        $segments = $this->splitStructuralCommas($name);
 
-        if ($commaPos !== null) {
-            $surname = substr($name, 0, $commaPos);
-            $tailSegments = explode(',', substr($name, $commaPos + 1));
+        if (count($segments) > 1) {
+            $surname = array_shift($segments);
+            $tailSegments = $segments;
 
             // a whole post-comma segment that is nothing but credentials
             // ("John Smith, MD, FACS") must not be flattened into the given
@@ -215,14 +219,25 @@ class Parser
             // a credential-only tail ("Kim Jong Un, MD") leaves an empty given
             // segment; under surname-first the caller asserted CJK order, so
             // split the surname segment the same way rather than falling back to
-            // Western order (which would read "Jong Un" as the surname)
+            // Western order (which would read "Jong Un" as the surname). A
+            // leading salutation ("Dr. Kim Jong Un, MD") is peeled first, same
+            // as the comma-less surname-first route, so the honorific is not
+            // shifted away as the surname token.
             if ($this->surnameFirst) {
                 $surnameTokens = explode(' ', trim($surname));
+                $peeled = $this->peelLeadingSalutations($surnameTokens);
 
                 if (count($surnameTokens) > 1) {
                     $first = array_shift($surnameTokens);
+                    $segment = $peeled === []
+                        ? $first
+                        : implode(' ', $peeled) . ' ' . $first;
 
-                    return $this->parseSplitName($first, implode(' ', $surnameTokens));
+                    return $this->parseSplitName($segment, implode(' ', $surnameTokens));
+                }
+
+                if ($peeled !== []) {
+                    $surname = implode(' ', array_merge($peeled, $surnameTokens));
                 }
             }
 
@@ -478,7 +493,7 @@ class Parser
      *
      * @param  array<int, \Iliaal\NameParser\Mapper\AbstractMapper>  $mappers
      */
-    public function setMappers(array $mappers): static
+    public function setMappers(array $mappers): Parser
     {
         $this->mappers = $mappers;
         $this->customMappers = $mappers !== [];
@@ -534,7 +549,14 @@ class Parser
     private function normalizePattern(string $whitespace): string
     {
         if ($this->normalizePattern === null || $this->normalizePatternKey !== $whitespace) {
-            $this->normalizePattern = '/[' . preg_quote($whitespace, '/') . ']+/';
+            // /u so multibyte whitespace (U+3000, NBSP) matches whole characters;
+            // a bytewise class would eat those bytes out of unrelated CJK glyphs.
+            // Invalid UTF-8 input makes preg_replace return null, which the
+            // caller's ?? fallback already covers. A whitespace set that is not
+            // valid UTF-8 cannot compile under /u at all (a warning per parse),
+            // so it keeps the bytewise semantics instead.
+            $unicode = mb_check_encoding($whitespace, 'UTF-8') ? 'u' : '';
+            $this->normalizePattern = '/[' . preg_quote($whitespace, '/') . ']+/' . $unicode;
             $this->normalizePatternKey = $whitespace;
         }
 
@@ -542,31 +564,52 @@ class Parser
     }
 
     /**
-     * byte offset of the first comma that is not shielded inside a matched
-     * nickname-delimiter span, or null when there is no such comma. Used to pick
-     * the surname/given split point without bisecting a bracketed nickname.
+     * split on every comma that is not shielded inside a matched delimiter
+     * span. Segments are sliced from the original string, so shielded commas
+     * survive verbatim inside their segment.
+     *
+     * @return list<string>
      */
-    private function firstStructuralCommaPos(string $name): ?int
+    private function splitStructuralCommas(string $name): array
     {
         if (! str_contains($name, ',')) {
-            return null;
+            return [$name];
         }
 
-        // masking only swaps ',' <-> a same-width placeholder, so byte offsets in
-        // the masked string map directly back onto the original
-        $pos = strpos($this->maskDelimitedCommas($name), ',');
+        // masking only swaps ',' <-> a same-width placeholder, so byte offsets
+        // in the masked string map directly back onto the original
+        $masked = $this->maskDelimitedCommas($name);
 
-        return $pos === false ? null : $pos;
+        $segments = [];
+        $offset = 0;
+
+        while (($pos = strpos($masked, ',', $offset)) !== false) {
+            $segments[] = substr($name, $offset, $pos - $offset);
+            $offset = $pos + 1;
+        }
+
+        $segments[] = substr($name, $offset);
+
+        return $segments;
     }
 
     /**
-     * replace each comma that falls inside a matched asymmetric delimiter pair
-     * with a placeholder so the comma split leaves the nickname intact. Only
-     * spans that actually close are masked; an unmatched opener masks nothing.
+     * replace each comma that falls inside a matched delimiter pair with a
+     * placeholder so the comma split leaves the nickname intact. Only spans
+     * that actually close are masked; an unmatched opener masks nothing. A
+     * symmetric delimiter (quote) opens only at a token start with a token-end
+     * closer later, mirroring NicknameMapper, so a mid-token apostrophe
+     * (O'Brien) or an elided particle ('t) never shields a comma.
      */
     private function maskDelimitedCommas(string $name): string
     {
         if (! str_contains($name, ',')) {
+            return $name;
+        }
+
+        // hostile megabyte rows would materialize a per-character array below;
+        // real names are tiny, so past this size commas split unshielded.
+        if (strlen($name) > 4096) {
             return $name;
         }
 
@@ -575,53 +618,132 @@ class Parser
             : self::DEFAULT_NICKNAME_DELIMITERS;
 
         $pairs = [];
+        /** @var array<string, true> $symmetric */
+        $symmetric = [];
         foreach ($delimiters as $open => $close) {
-            if ($open !== '' && $close !== '' && $open !== $close) {
+            if ($open === '' || $close === '') {
+                continue;
+            }
+
+            if ($open === $close) {
+                $symmetric[$open] = true;
+            } else {
                 $pairs[$open] = $close;
             }
         }
 
-        if ($pairs === []) {
+        if ($pairs === [] && $symmetric === []) {
             return $name;
         }
 
         // byte-level pre-check: no opener byte present means nothing to mask,
         // skipping the per-character scan on the common bracket-free row
-        if (strpbrk($name, implode('', array_keys($pairs))) === false) {
+        $openerBytes = implode('', array_merge(array_keys($pairs), array_keys($symmetric)));
+        if (strpbrk($name, $openerBytes) === false) {
             return $name;
         }
 
         $chars = mb_str_split($name, 1, 'UTF-8');
+        $total = count($chars);
 
-        /** @var list<string> $closers open spans' expected closing delimiters */
+        // pre-split every delimiter once; openers sorted longest-first so a
+        // multi-character delimiter ("<<") wins over a single-char prefix ("<")
+        /** @var list<array{list<string>, string, bool}> $openers opener chars, closer string, is-symmetric */
+        $openers = [];
+        foreach ($pairs as $open => $close) {
+            $openers[] = [mb_str_split((string) $open, 1, 'UTF-8'), $close, false];
+        }
+        foreach (array_keys($symmetric) as $quote) {
+            $openers[] = [mb_str_split((string) $quote, 1, 'UTF-8'), (string) $quote, true];
+        }
+        usort($openers, static fn(array $a, array $b): int => count($b[0]) <=> count($a[0]));
+
+        // token-end offsets per symmetric delimiter, so each opener's closer
+        // lookahead is a bounded list walk instead of a rescan
+        /** @var array<string, list<int>> $symmetricEnds */
+        $symmetricEnds = [];
+        foreach (array_keys($symmetric) as $quote) {
+            $quote = (string) $quote;
+            $quoteChars = mb_str_split($quote, 1, 'UTF-8');
+            $len = count($quoteChars);
+
+            for ($i = 0; $i + $len <= $total; $i++) {
+                if ($this->charsMatchAt($chars, $i, $quoteChars)
+                    && ($i + $len === $total || $chars[$i + $len] === ' ')) {
+                    $symmetricEnds[$quote][] = $i;
+                }
+            }
+        }
+
+        /** @var list<array{list<string>, bool}> $closers open spans' closer chars + is-symmetric */
         $closers = [];
+        /** @var list<string> $openQuotes symmetric delimiters currently open */
+        $openQuotes = [];
         /** @var list<list<int>> $pendingCommas comma offsets per open span */
         $pendingCommas = [];
         /** @var array<int, true> $mask */
         $mask = [];
 
-        foreach ($chars as $i => $ch) {
+        for ($i = 0; $i < $total;) {
             $depth = count($closers);
 
-            if ($depth > 0 && $ch === $closers[$depth - 1]) {
-                array_pop($closers);
-                foreach (array_pop($pendingCommas) ?? [] as $pos) {
-                    $mask[$pos] = true;
+            if ($depth > 0) {
+                [$closerChars, $isSymmetric] = $closers[$depth - 1];
+                $closerLen = count($closerChars);
+
+                if ($this->charsMatchAt($chars, $i, $closerChars)
+                    && (! $isSymmetric || $i + $closerLen === $total || $chars[$i + $closerLen] === ' ')) {
+                    array_pop($closers);
+                    if ($isSymmetric) {
+                        array_pop($openQuotes);
+                    }
+                    foreach (array_pop($pendingCommas) ?? [] as $pos) {
+                        $mask[$pos] = true;
+                    }
+
+                    $i += $closerLen;
+
+                    continue;
+                }
+            }
+
+            foreach ($openers as [$openChars, $close, $isSymmetric]) {
+                if (! $this->charsMatchAt($chars, $i, $openChars)) {
+                    continue;
                 }
 
-                continue;
-            }
+                $openLen = count($openChars);
 
-            if (isset($pairs[$ch])) {
-                $closers[] = $pairs[$ch];
+                if ($isSymmetric) {
+                    $atTokenStart = $i === 0 || $chars[$i - 1] === ' ';
+                    $hasCloser = false;
+                    foreach ($symmetricEnds[$close] ?? [] as $end) {
+                        if ($end >= $i + $openLen) {
+                            $hasCloser = true;
+
+                            break;
+                        }
+                    }
+
+                    if (! $atTokenStart || ! $hasCloser || in_array($close, $openQuotes, true)) {
+                        continue;
+                    }
+
+                    $openQuotes[] = $close;
+                }
+
+                $closers[] = [mb_str_split($close, 1, 'UTF-8'), $isSymmetric];
                 $pendingCommas[] = [];
+                $i += $openLen;
 
-                continue;
+                continue 2;
             }
 
-            if ($ch === ',' && $depth > 0) {
+            if ($chars[$i] === ',' && $depth > 0) {
                 $pendingCommas[$depth - 1][] = $i;
             }
+
+            $i++;
         }
 
         if ($mask === []) {
@@ -633,6 +755,23 @@ class Parser
         }
 
         return implode('', $chars);
+    }
+
+    /**
+     * whether the character sequence at $offset equals $needle
+     *
+     * @param  list<string>  $chars
+     * @param  list<string>  $needle
+     */
+    private function charsMatchAt(array $chars, int $offset, array $needle): bool
+    {
+        foreach ($needle as $j => $needleChar) {
+            if (($chars[$offset + $j] ?? null) !== $needleChar) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -710,7 +849,7 @@ class Parser
     /**
      * set the string of characters that are supposed to be treated as whitespace
      */
-    public function setWhitespace(string $whitespace): static
+    public function setWhitespace(string $whitespace): Parser
     {
         $this->whitespace = $whitespace;
 
@@ -767,7 +906,7 @@ class Parser
     /**
      * @param  array<string, string>  $nicknameDelimiters
      */
-    public function setNicknameDelimiters(array $nicknameDelimiters): static
+    public function setNicknameDelimiters(array $nicknameDelimiters): Parser
     {
         $this->nicknameDelimiters = $nicknameDelimiters;
         $this->invalidateMapperCache();
@@ -780,7 +919,7 @@ class Parser
         return $this->maxSalutationIndex;
     }
 
-    public function setMaxSalutationIndex(int $maxSalutationIndex): static
+    public function setMaxSalutationIndex(int $maxSalutationIndex): Parser
     {
         $this->maxSalutationIndex = $maxSalutationIndex;
         $this->invalidateMapperCache();
@@ -793,7 +932,7 @@ class Parser
         return $this->maxCombinedInitials;
     }
 
-    public function setMaxCombinedInitials(int $maxCombinedInitials): static
+    public function setMaxCombinedInitials(int $maxCombinedInitials): Parser
     {
         $this->maxCombinedInitials = $maxCombinedInitials;
         $this->invalidateMapperCache();
@@ -812,7 +951,7 @@ class Parser
      * sub-parsers, not the configurable mapper pipeline, so a custom setMappers()
      * list does not apply here; there is no cache to drop.
      */
-    public function setSurnameFirst(bool $surnameFirst): static
+    public function setSurnameFirst(bool $surnameFirst): Parser
     {
         $this->surnameFirst = $surnameFirst;
 

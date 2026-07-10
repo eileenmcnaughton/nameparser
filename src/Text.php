@@ -21,23 +21,33 @@ final class Text
      */
     public static function key(string $word): string
     {
+        // the entry cap bounds the count, not the bytes: a run of huge unique
+        // tokens would retain megabytes, and nothing that long is a name worth
+        // caching anyway
+        if (strlen($word) > 64) {
+            return self::transform($word);
+        }
+
         if (isset(self::$cache[$word])) {
             return self::$cache[$word];
         }
-
-        $key = str_replace('.', '', $word);
-        $key = trim($key, " \r\n\t\"'()[]{}<>");
-        $key = rtrim($key, ',;:)');
-        $key = mb_strtolower($key, 'UTF-8');
 
         // pure, config-independent transform, so cached entries never go stale;
         // cap the table and drop it wholesale to bound memory on huge batches.
         if (count(self::$cache) >= 4096) {
             self::$cache = [];
         }
-        self::$cache[$word] = $key;
 
-        return $key;
+        return self::$cache[$word] = self::transform($word);
+    }
+
+    private static function transform(string $word): string
+    {
+        $key = str_replace('.', '', $word);
+        $key = trim($key, " \r\n\t\"'()[]{}<>");
+        $key = rtrim($key, ',;:)');
+
+        return mb_strtolower($key, 'UTF-8');
     }
 
     /**

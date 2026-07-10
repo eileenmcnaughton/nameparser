@@ -198,6 +198,9 @@ class CredentialCollisionTest extends TestCase
             'comma credential before given'    => ['Smith, MD, John', 'John', '', 'Smith', '', 'MD'],
             'comma ambiguous credential keeps middle' => ['Smith, John, DO, Robert', 'John', 'Robert', 'Smith', '', 'DO'],
             'leading credential run in given'  => ['Smith, MD John', 'John', '', 'Smith', '', 'MD'],
+            // combined initials behind a preserved name token are not a
+            // stray credential; only the contiguous tail run qualifies
+            'all-caps initials behind a name token stay initials' => ['John Paul JM Smith MD', 'John', 'Paul', 'Smith', 'J M', 'MD'],
         ];
     }
 

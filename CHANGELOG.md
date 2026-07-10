@@ -16,9 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `Name::toArray()['given_name']` is now documented as first, middle, and initials only. Use `full_name` when you need the given name plus surname.
 - Custom mapper lists set with `setMappers()` now survive `setMaxCombinedInitials()`, `setMaxSalutationIndex()`, and `setNicknameDelimiters()`. Passing an empty list resets the parser to the default pipeline.
-- Fluent setters (`Parser::setMappers()`, `setWhitespace()`, `setNicknameDelimiters()`, `setMaxSalutationIndex()`, `setMaxCombinedInitials()`, `setSurnameFirst()`, and `Name::setParts()`, `setSource()`) return `static`, so a subclass keeps its own type through a call chain instead of narrowing to the base class.
+- Hostile inputs (kilobytes of unmatched quotes, 100 KB tokens of any case shape, megabyte rows) now parse in linear time and bounded memory.
 - `LanguageInterface` documents the dictionary key format: keys must already be normalized (lowercase, periods removed, no edge punctuation) as `Text::key()` produces, and may be int or string, so a numeric ordinal like the German "2." keys under the bare digit.
-- Export is faster on large batches: `camelcase()` results are cached on the part, `Name::export()` no longer rebuilds class names per part, `Text::key()` normalizations are cached, and the whitespace-collapse regex is memoized. A full parse-plus-`toArray()` row is net faster than 1.2.0; raw `parse()` alone is somewhat slower because the new credential and comma safeguards add per-row scans.
+- Export is faster on large batches; a full parse-plus-`toArray()` row is net faster than 1.2.0, while raw `parse()` alone is slightly slower from the new credential and comma safeguards.
 
 ### Fixed
 
@@ -40,7 +40,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Caseless-script names are not split into initials, so "Wang, 李明" keeps 李明 as the first name instead of splitting it into two initials.
 - Comma-form initials use the whole input's casing, so "Smith, JM" splits JM into J and initial M (the mixed-case surname proves the signal) while all-caps "SMITH, JM" keeps Jm as a first name.
 - Surname-first parsing handles a leading salutation and a credential-only tail, so "Dr. Kim Jong Un" keeps surname Kim (not the title) and "Kim Jong Un, MD" keeps surname Kim with credential MD instead of falling back to Western order.
-- A comma inside a bracketed nickname no longer bisects the name, so "John (Bob, Jr) Doe" keeps last name Doe and nickname "Bob, Jr" instead of splitting at the nickname's comma.
+- A comma inside a delimited nickname no longer bisects the name and survives into the nickname, for bracketed, quoted, and custom multi-character forms alike: "John (Bob, Jr) Doe", "John 'Bob, Jr' Doe", and "John <<Bob, Jr>> Doe" (with `['<<' => '>>']`) keep nickname "Bob, Jr", and the given-side "Smith, John (Jack, Robert)" keeps "Jack, Robert" whole.
+- An all-caps token behind a preserved name token stays combined initials, so "John Paul JM Smith MD" keeps initials J M; an unknown credential is only recognized inside the contiguous run at the tail.
+- Surname-first input with both a leading salutation and a credential-only comma tail keeps the surname, so "Dr. Kim Jong Un, MD" gives surname Kim, salutation Dr., and credential MD.
+- Multibyte custom whitespace (U+3000, NBSP) no longer corrupts unrelated glyphs that share its bytes; the collapse pattern matches whole characters. A whitespace set that is not valid UTF-8 keeps the old bytewise semantics instead of warning on every parse.
+- Invalid-UTF-8 nickname delimiter keys are ignored instead of emitting a compile warning per token.
 - Nickname delimiters accept multibyte and multi-character opener/closer pairs, and empty-string delimiter keys are ignored instead of emitting a warning per parse.
 - An elided surname particle survives instead of being read as an unterminated nickname or an initial, so "'t Hooft" keeps the leading particle.
 - Spaced parentheses yield a clean nickname, so "John ( Bob ) Smith" gives nickname Bob without stray spaces, and a delimiter pair that cleans to nothing emits no nickname at all.
