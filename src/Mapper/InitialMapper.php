@@ -49,14 +49,18 @@ class InitialMapper extends AbstractMapper
         // SuffixMapper.
         $splitCombined = ! $this->isUniformUpperContext($parts);
 
-        for ($k = 0; $k < count($parts); $k++) {
-            $part = $parts[$k];
+        $mapped = [];
 
+        foreach ($parts as $k => $part) {
             if ($part instanceof AbstractPart) {
+                $mapped[] = $part;
+
                 continue;
             }
 
             if (! $this->matchLastPart && $k === $last) {
+                $mapped[] = $part;
+
                 continue;
             }
 
@@ -73,18 +77,18 @@ class InitialMapper extends AbstractMapper
                     && $length <= $this->combinedMax
                     && $stripped !== mb_strtolower($stripped, 'UTF-8')
                 ) {
-                    array_splice($parts, $k, 1, mb_str_split($stripped, 1, 'UTF-8'));
-                    $last = count($parts) - 1;
-                    $part = $parts[$k];
+                    foreach (mb_str_split($stripped, 1, 'UTF-8') as $initial) {
+                        $mapped[] = $this->isInitial($initial) ? new Initial($initial) : $initial;
+                    }
+
+                    continue;
                 }
             }
 
-            if (is_string($part) && $this->isInitial($part)) {
-                $parts[$k] = new Initial($part);
-            }
+            $mapped[] = $this->isInitial($part) ? new Initial($part) : $part;
         }
 
-        return $parts;
+        return $mapped;
     }
 
     protected function isInitial(string $part): bool

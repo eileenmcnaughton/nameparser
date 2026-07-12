@@ -70,9 +70,13 @@ class NicknameMapper extends AbstractMapper
 
         $this->lastCloserIndex = [];
 
-        $isEncapsulated = false;
+        $openingDelimiter = '';
 
-        $closingDelimiter = '';
+        /** @var list<array{open: string, close: string, symmetric: bool}> $delimiterStack */
+        $delimiterStack = [];
+
+        /** @var array<string, true> $openSymmetric */
+        $openSymmetric = [];
 
         /** @var PartArray $pending parts mapped under the current still-open delimiter */
         $pending = [];
@@ -88,22 +92,37 @@ class NicknameMapper extends AbstractMapper
                 continue;
             }
 
+            $isEncapsulated = $delimiterStack !== [];
+
             if (preg_match($this->regexp, $part, $matches)) {
                 $opener = $matches[1];
                 $closer = $this->delimiters[$opener] ?? '';
                 $stripped = mb_substr($part, mb_strlen($opener, 'UTF-8'), null, 'UTF-8');
+                $isSymmetric = $opener === $closer;
 
                 // a symmetric delimiter (quote) is only an opener when its closing
                 // partner appears later; otherwise a leading quote is an elided
                 // particle ("'t Hooft") that must survive verbatim.
-                $shouldOpen = $opener !== $closer
-                    || $this->symmetricCloserAppears($parts, $k, $stripped, $closer);
+                $shouldOpen = ! $isSymmetric
+                    || (! isset($openSymmetric[$opener])
+                        && $this->symmetricCloserAppears($parts, $k, $stripped, $closer));
 
                 if ($shouldOpen) {
-                    $isEncapsulated = true;
-                    $part = $stripped;
-                    $closingDelimiter = $closer;
-                    $pending = [];
+                    $delimiterStack[] = [
+                        'open' => $opener,
+                        'close' => $closer,
+                        'symmetric' => $isSymmetric,
+                    ];
+
+                    if ($isSymmetric) {
+                        $openSymmetric[$opener] = true;
+                    }
+
+                    if (! $isEncapsulated) {
+                        $part = $stripped;
+                        $openingDelimiter = $opener;
+                        $pending = [];
+                    }
                 } elseif (! $isEncapsulated) {
                     if ($stripped === '') {
                         $strayDrops[] = $k;
@@ -113,18 +132,27 @@ class NicknameMapper extends AbstractMapper
                 }
             }
 
-            if (! $isEncapsulated) {
+            if ($delimiterStack === []) {
                 continue;
             }
 
             $pending[$k] = $parts[$k];
 
-            $closerLength = mb_strlen($closingDelimiter, 'UTF-8');
-            if ($closingDelimiter !== ''
-                && mb_substr($part, -$closerLength, null, 'UTF-8') === $closingDelimiter) {
-                $isEncapsulated = false;
-                $part = mb_substr($part, 0, -$closerLength, 'UTF-8');
-                $pending = [];
+            $closeCount = $this->matchingCloserCount($part, $delimiterStack);
+            if ($closeCount > 0) {
+                $closed = array_splice($delimiterStack, -$closeCount);
+
+                foreach ($closed as $delimiter) {
+                    if ($delimiter['symmetric']) {
+                        unset($openSymmetric[$delimiter['open']]);
+                    }
+                }
+
+                if ($delimiterStack === []) {
+                    $outerCloserLength = mb_strlen($closed[0]['close'], 'UTF-8');
+                    $part = mb_substr($part, 0, -$outerCloserLength, 'UTF-8');
+                    $pending = [];
+                }
             }
 
             $value = trim($part, '"\'');
@@ -142,7 +170,7 @@ class NicknameMapper extends AbstractMapper
 
         // an opening delimiter with no matching close is not a nickname: revert
         // the swallowed parts so the surname survives (e.g. "John (Bob Smith").
-        if ($isEncapsulated) {
+        if ($delimiterStack !== []) {
             foreach ($pending as $k => $original) {
                 $parts[$k] = $original;
 
@@ -156,9 +184,11 @@ class NicknameMapper extends AbstractMapper
             // ("Bob Jones (" must not yield last name "Jones (").
             $open = array_key_first($pending);
             if ($open !== null && is_string($parts[$open])) {
-                // also drop a trailing comma left over from a shielded comma
-                // split ("(Jack," when the span's closer was consumed upstream)
-                $cleaned = ltrim($parts[$open], implode('', array_keys($this->delimiters)));
+                $cleaned = $parts[$open];
+                if (str_starts_with($cleaned, $openingDelimiter)) {
+                    $cleaned = mb_substr($cleaned, mb_strlen($openingDelimiter, 'UTF-8'), null, 'UTF-8');
+                }
+
                 $cleaned = rtrim($cleaned, ',;');
                 if ($cleaned === '') {
                     unset($parts[$open]);
@@ -177,6 +207,34 @@ class NicknameMapper extends AbstractMapper
         }
 
         return array_values($parts);
+    }
+
+    /**
+     * @param  list<array{open: string, close: string, symmetric: bool}>  $delimiterStack
+     */
+    private function matchingCloserCount(string $part, array $delimiterStack): int
+    {
+        $suffix = '';
+        $matches = 0;
+        $partLength = strlen($part);
+
+        for ($i = count($delimiterStack) - 1; $i >= 0; $i--) {
+            $closer = $delimiterStack[$i]['close'];
+            if ($closer === '') {
+                break;
+            }
+
+            $suffix .= $closer;
+            if (strlen($suffix) > $partLength) {
+                break;
+            }
+
+            if (str_ends_with($part, $suffix)) {
+                $matches = count($delimiterStack) - $i;
+            }
+        }
+
+        return $matches;
     }
 
     /**

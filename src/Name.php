@@ -20,15 +20,23 @@ class Name
     protected ?string $source = null;
 
     /**
+     * @var array<int|string, string>|null
+     */
+    protected ?array $confidenceSuffixes = null;
+
+    /**
      * constructor takes the array of parts this name consists of
      *
      * raw string parts are retained in getParts() but ignored by every getter
      * and by export(): the getters only ever read AbstractPart instances.
      *
      * @param  array<int, AbstractPart|string>|null  $parts
+     * @param  array<int|string, string>|null  $confidenceSuffixes
      */
-    public function __construct(?array $parts = null)
+    public function __construct(?array $parts = null, ?array $confidenceSuffixes = null)
     {
+        $this->confidenceSuffixes = $confidenceSuffixes;
+
         if ($parts !== null) {
             $this->setParts($parts);
         }
@@ -105,7 +113,7 @@ class Name
      */
     public function getConfidence(): array
     {
-        return Confidence::assess($this->source ?? $this->__toString());
+        return Confidence::assess($this->source ?? $this->__toString(), $this->confidenceSuffixes);
     }
 
     /**

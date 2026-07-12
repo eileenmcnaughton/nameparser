@@ -11,6 +11,8 @@ use Iliaal\NameParser\Text;
  */
 class SuffixMapper extends AbstractMapper
 {
+    private ?bool $uniformUpperOverride = null;
+
     /**
      * Suffix keys that also occur as real given names / surnames (Vietnamese
      * "Do"/"Vi", Chinese "Ma", roman numerals, short allied-health creds).
@@ -65,6 +67,11 @@ class SuffixMapper extends AbstractMapper
         protected bool $matchSinglePart = false,
         protected int $reservedParts = 2,
     ) {}
+
+    public function setUniformUpperOverride(?bool $override): void
+    {
+        $this->uniformUpperOverride = $override;
+    }
 
     /**
      * @param  PartArray  $parts
@@ -377,6 +384,10 @@ class SuffixMapper extends AbstractMapper
      */
     private function isUniformUpperContext(array $parts): bool
     {
+        if ($this->uniformUpperOverride !== null) {
+            return $this->uniformUpperOverride;
+        }
+
         $hasUpper = false;
 
         foreach ($parts as $part) {

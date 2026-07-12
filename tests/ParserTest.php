@@ -614,6 +614,19 @@ class ParserTest extends TestCase
         $this->assertSame('   _', $parser->getWhitespace());
     }
 
+    public function testSplitParsersHonorConfiguredWhitespace(): void
+    {
+        $parser = (new Parser())->setWhitespace('');
+
+        $plain = $parser->parse("John\tSmith");
+        $comma = $parser->parse("Smith, John\tRobert");
+
+        $this->assertSame("John\tSmith", $plain->getFirstname());
+        $this->assertSame("John\tRobert", $comma->getFirstname());
+        $this->assertSame('', $comma->getMiddlename());
+        $this->assertSame('Smith', $comma->getLastname());
+    }
+
     public function testSetGetNicknameDelimiters(): void
     {
         $parser = new Parser();
@@ -774,6 +787,16 @@ class ParserTest extends TestCase
         $comma = $parser->parse('Smith, John <<Jack, Rob>>');
         $this->assertSame('Smith', $comma->getLastname());
         $this->assertSame('Jack, Rob', $comma->getNickname());
+    }
+
+    public function testMismatchedNestedCloserDoesNotLeakIntoNameParts(): void
+    {
+        $name = (new Parser())->parse('John (Bob [X) Y] Z)');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame('', $name->getLastname());
+        $this->assertSame('Bob [X) Y] Z', $name->getNickname());
     }
 
     public function testSetMappersWithEmptyListRestoresDefaultPipeline(): void

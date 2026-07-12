@@ -13,9 +13,13 @@ use Iliaal\NameParser\Mapper\SuffixMapper;
 class Confidence
 {
     /**
+     * When suffixes are supplied, only collisions present in that parser's
+     * configured dictionaries contribute to the result.
+     *
+     * @param  array<int|string, string>|null  $suffixes
      * @return array{ambiguous: bool, notes: list<string>}
      */
-    public static function assess(string $original): array
+    public static function assess(string $original, ?array $suffixes = null): array
     {
         $letters = Text::letters($original);
         $uniformUpper = Text::isUpperCase($original);
@@ -28,6 +32,10 @@ class Confidence
         foreach ($tokens as $token) {
             $key = Text::key($token);
             if (! isset(SuffixMapper::AMBIGUOUS_KEYS[$key])) {
+                continue;
+            }
+
+            if ($suffixes !== null && ! array_key_exists($key, $suffixes)) {
                 continue;
             }
 

@@ -112,6 +112,8 @@ class Parser
      */
     private ?InitialMapper $secondSegmentInitialMapper = null;
 
+    private ?SuffixMapper $secondSegmentSuffixMapper = null;
+
     /**
      * @param  array<int, LanguageInterface>  $languages
      */
@@ -144,6 +146,7 @@ class Parser
         if (count($segments) > 1) {
             $surname = array_shift($segments);
             $tailSegments = $segments;
+            $uniformUpper = $this->isUniformUpperInput($name);
 
             // a whole post-comma segment that is nothing but credentials
             // ("John Smith, MD, FACS") must not be flattened into the given
@@ -153,25 +156,13 @@ class Parser
             // name). Uniformity is judged over the whole input, so an unknown
             // credential candidate ("FACS") is only recognized when the casing
             // still carries a signal.
-            [$creditParts, $givenSegments] = $this->splitCommaCredentials(
+            $givenParts = $this->splitCommaCredentials(
                 $tailSegments,
-                $this->isUniformUpperInput($name),
+                $uniformUpper,
             );
 
-            $given = implode(' ', $givenSegments);
-
-            if ($creditParts === []) {
-                return $this->parseSplitName($surname, $given)->setSource($name);
-            }
-
-            // an empty given (all segments were credential-only) routes the
-            // surname through parseSplitName's Western-order empty-given path
-            $parts = array_merge(
-                $this->parseSplitName($surname, $given)->getParts(),
-                $creditParts,
-            );
-
-            return (new Name($parts))->setSource($name);
+            return $this->parseSplitParts($surname, $givenParts, $uniformUpper)
+                ->setSource($name);
         }
 
         if ($this->surnameFirst) {
@@ -196,13 +187,7 @@ class Parser
             }
         }
 
-        $parts = explode(' ', $name);
-
-        foreach ($this->getMappers() as $mapper) {
-            $parts = $mapper->map($parts);
-        }
-
-        return (new Name($parts))->setSource($name);
+        return $this->parseParts(explode(' ', $name))->setSource($name);
     }
 
     /**
@@ -241,23 +226,49 @@ class Parser
                 }
             }
 
-            return new Name($this->getFirstSegmentParser()->parse($surname)->getParts());
+            return $this->makeName($this->getFirstSegmentParser()->parse($surname)->getParts());
         }
 
-        // the InitialMapper split gate ("JM" -> J M) keys off casing, and the
-        // signal must come from the whole input, not the given segment alone:
-        // "Smith, JM" splits like "JM Smith" (Smith proves mixed case), while
-        // "SMITH, JM" (uniform) does not. Feed the whole-input verdict in, then
-        // always reset it — the sub-parser and its mapper are memoized.
-        $this->getSecondSegmentParser();
-        $this->secondSegmentInitialMapper?->setUniformUpperOverride(
+        return $this->parseSplitParts(
+            $surname,
+            explode(' ', $given),
             $this->isUniformUpperInput($surname . ' ' . $given),
         );
+    }
+
+    /**
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $givenParts
+     */
+    private function parseSplitParts(string $surname, array $givenParts, bool $uniformUpper): Name
+    {
+        $this->getSecondSegmentParser();
+        $this->secondSegmentInitialMapper?->setUniformUpperOverride($uniformUpper);
+        $this->secondSegmentSuffixMapper?->setUniformUpperOverride($uniformUpper);
 
         try {
-            $givenName = $this->getSecondSegmentParser()->parse($given);
+            $givenName = $this->getSecondSegmentParser()->parseParts($givenParts);
         } finally {
             $this->secondSegmentInitialMapper?->setUniformUpperOverride(null);
+            $this->secondSegmentSuffixMapper?->setUniformUpperOverride(null);
+        }
+
+        if ($this->surnameFirst && ! $this->hasGivenNameParts($givenName)) {
+            $surnameTokens = explode(' ', trim($surname));
+            $peeled = $this->peelLeadingSalutations($surnameTokens);
+
+            if (count($surnameTokens) > 1) {
+                $first = array_shift($surnameTokens);
+                $segment = $peeled === []
+                    ? $first
+                    : implode(' ', $peeled) . ' ' . $first;
+                $base = $this->parseSplitParts(
+                    $segment,
+                    $surnameTokens,
+                    $this->isUniformUpperInput($surname),
+                );
+
+                return $this->makeName(array_merge($base->getParts(), $givenName->getParts()));
+            }
         }
 
         $surnameParser = $this->hasGivenNameParts($givenName)
@@ -269,52 +280,66 @@ class Parser
             $givenName->getParts(),
         );
 
-        return new Name($parts);
+        return $this->makeName($parts);
     }
 
     /**
      * classify the post-first-comma segments: a segment whose every token is a
      * credential (dictionary suffix under the casing rule, or an all-caps
      * unknown-credential candidate) becomes Suffix parts; the rest are returned
-     * verbatim to fold back into the given segment. Candidates only count when a
-     * real dictionary suffix anchors the classification somewhere in the tail.
+     * verbatim to fold back into the given segment. Candidates only count inside
+     * a contiguous credential run anchored by a real dictionary suffix.
      *
      * @param  list<string>  $tailSegments
-     * @return array{0: list<Suffix>, 1: list<string>}
+     * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
      */
     private function splitCommaCredentials(array $tailSegments, bool $uniformInput): array
     {
-        /** @var list<array{0: string, 1: list<array{0: string, 1: int}>}> $classified */
-        $classified = [];
-        $hasAnchor = false;
+        /** @var array<int, \Iliaal\NameParser\Part\AbstractPart|string> $parts */
+        $parts = [];
+        /** @var list<list<string>> $pendingCandidates */
+        $pendingCandidates = [];
+        $runAnchored = false;
 
         foreach ($tailSegments as $segment) {
             $trimmed = trim($segment);
-            $tokens = $trimmed === '' ? [] : (preg_split('/\s+/', $trimmed) ?: []);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            $tokens = explode(' ', $trimmed);
 
             $classes = [];
+            $hasDictionarySuffix = false;
             foreach ($tokens as $token) {
                 $class = $this->creditClass($token, $uniformInput);
 
                 if ($class === 1) {
-                    $hasAnchor = true;
+                    $hasDictionarySuffix = true;
                 }
 
                 $classes[] = [$token, $class];
             }
 
-            $classified[] = [$segment, $classes];
-        }
+            if (! $this->isCredentialOnlySegment($classes)) {
+                $this->appendCandidateSegments($parts, $pendingCandidates, $runAnchored);
+                $pendingCandidates = [];
+                $runAnchored = false;
 
-        /** @var list<Suffix> $creditParts */
-        $creditParts = [];
-        /** @var list<string> $givenSegments */
-        $givenSegments = [];
+                foreach ($this->mapCommaSegmentSuffixes($tokens, $uniformInput) as $part) {
+                    $parts[] = $part;
+                }
 
-        foreach ($classified as [$segment, $classes]) {
-            if ($hasAnchor && $this->isCredentialOnlySegment($classes)) {
+                continue;
+            }
+
+            if ($hasDictionarySuffix) {
+                $this->appendCandidateSegments($parts, $pendingCandidates, true);
+                $pendingCandidates = [];
+                $runAnchored = true;
+
                 foreach ($classes as [$token, $class]) {
-                    $creditParts[] = $class === 1
+                    $parts[] = $class === 1
                         ? new Suffix($token, $this->getSuffixes()[Text::key($token)])
                         : new Suffix($token);
                 }
@@ -322,10 +347,47 @@ class Parser
                 continue;
             }
 
-            $givenSegments[] = $segment;
+            if ($runAnchored) {
+                foreach ($tokens as $token) {
+                    $parts[] = new Suffix($token);
+                }
+            } else {
+                $pendingCandidates[] = $tokens;
+            }
         }
 
-        return [$creditParts, $givenSegments];
+        $this->appendCandidateSegments($parts, $pendingCandidates, $runAnchored);
+
+        return $parts;
+    }
+
+    /**
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
+     * @param  list<list<string>>  $segments
+     */
+    private function appendCandidateSegments(array &$parts, array $segments, bool $asSuffix): void
+    {
+        foreach ($segments as $tokens) {
+            foreach ($tokens as $token) {
+                $parts[] = $asSuffix ? new Suffix($token) : $token;
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $tokens
+     * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
+     */
+    private function mapCommaSegmentSuffixes(array $tokens, bool $uniformUpper): array
+    {
+        $this->getSecondSegmentParser();
+        $this->secondSegmentSuffixMapper?->setUniformUpperOverride($uniformUpper);
+
+        try {
+            return $this->secondSegmentSuffixMapper?->map($tokens) ?? $tokens;
+        } finally {
+            $this->secondSegmentSuffixMapper?->setUniformUpperOverride(null);
+        }
     }
 
     /**
@@ -417,9 +479,29 @@ class Parser
         return false;
     }
 
+    /**
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
+     */
+    private function parseParts(array $parts): Name
+    {
+        foreach ($this->getMappers() as $mapper) {
+            $parts = $mapper->map($parts);
+        }
+
+        return $this->makeName($parts);
+    }
+
+    /**
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
+     */
+    private function makeName(array $parts): Name
+    {
+        return new Name($parts, $this->getSuffixes());
+    }
+
     protected function getFirstSegmentParser(): Parser
     {
-        return $this->firstSegmentParser ??= (new Parser())->setMappers([
+        return $this->firstSegmentParser ??= (new Parser())->setWhitespace($this->getWhitespace())->setMappers([
             new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
             new SuffixMapper($this->getSuffixes(), false, 2),
             new NicknameMapper($this->getNicknameDelimiters()),
@@ -432,7 +514,7 @@ class Parser
 
     protected function getSurnameSegmentParser(): Parser
     {
-        return $this->surnameSegmentParser ??= (new Parser())->setMappers([
+        return $this->surnameSegmentParser ??= (new Parser())->setWhitespace($this->getWhitespace())->setMappers([
             new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
             new SuffixMapper($this->getSuffixes(), false, 1),
             new LastnameMapper($this->getPrefixes(), true, true),
@@ -443,8 +525,9 @@ class Parser
     {
         if ($this->secondSegmentParser === null) {
             $this->secondSegmentInitialMapper = new InitialMapper($this->getMaxCombinedInitials(), true);
-            $this->secondSegmentParser = (new Parser())->setMappers([
-                new SuffixMapper($this->getSuffixes(), true, 0),
+            $this->secondSegmentSuffixMapper = new SuffixMapper($this->getSuffixes(), true, 0);
+            $this->secondSegmentParser = (new Parser())->setWhitespace($this->getWhitespace())->setMappers([
+                $this->secondSegmentSuffixMapper,
                 new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
                 new NicknameMapper($this->getNicknameDelimiters()),
                 $this->secondSegmentInitialMapper,
@@ -517,6 +600,7 @@ class Parser
         $this->surnameSegmentParser = null;
         $this->secondSegmentParser = null;
         $this->secondSegmentInitialMapper = null;
+        $this->secondSegmentSuffixMapper = null;
     }
 
     /**
@@ -787,14 +871,14 @@ class Parser
     {
         $salutations = $this->getSalutations();
         $maxWords = $this->maxSalutationWords();
+        $offset = 0;
+        $total = count($tokens);
 
-        $peeled = [];
-
-        while ($tokens !== []) {
+        while ($offset < $total) {
             $matched = 0;
 
-            for ($n = min(count($tokens), $maxWords); $n >= 1; $n--) {
-                $key = Text::key(implode(' ', array_slice($tokens, 0, $n)));
+            for ($n = min($total - $offset, $maxWords); $n >= 1; $n--) {
+                $key = Text::key(implode(' ', array_slice($tokens, $offset, $n)));
 
                 if (array_key_exists($key, $salutations)) {
                     $matched = $n;
@@ -807,14 +891,11 @@ class Parser
                 break;
             }
 
-            for ($i = 0; $i < $matched; $i++) {
-                $token = array_shift($tokens);
-
-                if ($token !== null) {
-                    $peeled[] = $token;
-                }
-            }
+            $offset += $matched;
         }
+
+        $peeled = array_slice($tokens, 0, $offset);
+        $tokens = array_slice($tokens, $offset);
 
         return $peeled;
     }
@@ -852,6 +933,7 @@ class Parser
     public function setWhitespace(string $whitespace): Parser
     {
         $this->whitespace = $whitespace;
+        $this->invalidateMapperCache();
 
         return $this;
     }

@@ -41,6 +41,9 @@ class CommaSegmentTest extends TestCase
             // leading credential run inside the given segment
             'leading credential run in given' => ['Smith, MD John', 'John', '', 'Smith', 'MD'],
             'leading title-case name is not a credential' => ['Smith, Do John', 'Do', 'John', 'Smith', ''],
+            'mixed credential positions keep source order' => ['Smith, MD, John PhD', 'John', '', 'Smith', 'MD PhD'],
+            'candidate cannot cross a name segment' => ['Smith, JOHN, Robert, MD', 'John', 'Robert', 'Smith', 'MD'],
+            'unknown candidate cannot cross a name segment' => ['Smith, FACS, John, MD', 'Facs', 'John', 'Smith', 'MD'],
         ];
     }
 

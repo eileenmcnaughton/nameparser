@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
+- Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
+
+### Fixed
+
+- Comma credentials retain source order, and an unknown all-caps candidate cannot cross a preserved name segment to consume a given name.
+- Custom unclosed nickname delimiters are removed exactly without `ltrim()` character-mask warnings, and nested delimiters use stack semantics so a mismatched closer cannot terminate an outer nickname span.
+- Comma and surname-first subparsers honor custom whitespace, and parsed confidence uses the parser's configured suffix dictionaries.
+
+### For contributors
+
+- CI now enforces the README punctuation rule, and the obsolete mbstring-absence mock dependency has been removed.
+
 ## [1.3.0] - 2026-07-10
 
 ### Added

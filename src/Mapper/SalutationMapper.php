@@ -13,7 +13,7 @@ class SalutationMapper extends AbstractMapper
     /**
      * Multi-word salutation patterns ("the honorable", "his honour"), split
      * once. Single-word salutations are handled by the exact-match check in
-     * substituteWithSalutation(), so only these need the subset loop.
+     * matchAt(), so only these need the subset loop.
      *
      * @var list<array{array<int, string>, string}>
      */
@@ -42,18 +42,23 @@ class SalutationMapper extends AbstractMapper
     {
         $max = ($this->maxIndex > 0) ? min($this->maxIndex, count($parts)) : max(1, intdiv(count($parts), 2));
 
-        // count($parts) is re-checked each step: a multi-word match in
-        // substituteWithSalutation() splices several tokens into one, shrinking
-        // the array below the $max computed up front.
-        for ($k = 0; $k < $max && $k < count($parts); $k++) {
-            if ($parts[$k] instanceof AbstractPart) {
+        $mapped = [];
+        $input = 0;
+        $scanned = 0;
+        $total = count($parts);
+
+        while ($input < $total && $scanned < $max) {
+            if ($parts[$input] instanceof AbstractPart) {
                 break;
             }
 
-            $parts = $this->substituteWithSalutation($parts, $k);
+            [$part, $consumed] = $this->matchAt($parts, $input);
+            $mapped[] = $part;
+            $input += $consumed;
+            $scanned++;
         }
 
-        return $parts;
+        return array_merge($mapped, array_slice($parts, $input));
     }
 
     /**
@@ -66,18 +71,35 @@ class SalutationMapper extends AbstractMapper
      */
     protected function substituteWithSalutation(array $parts, int $start): array
     {
+        [$replacement, $consumed] = $this->matchAt($parts, $start);
+
+        if ($consumed === 1) {
+            $parts[$start] = $replacement;
+
+            return $parts;
+        }
+
+        array_splice($parts, $start, $consumed, [$replacement]);
+
+        return $parts;
+    }
+
+    /**
+     * @param  PartArray  $parts
+     * @return array{AbstractPart|string, int}
+     */
+    private function matchAt(array $parts, int $start): array
+    {
         $current = $parts[$start];
 
         if (! is_string($current)) {
-            return $parts;
+            return [$current, 1];
         }
 
         $currentKey = $this->getKey($current);
 
         if (array_key_exists($currentKey, $this->salutations)) {
-            $parts[$start] = new Salutation($current, $this->salutations[$currentKey]);
-
-            return $parts;
+            return [new Salutation($current, $this->salutations[$currentKey]), 1];
         }
 
         foreach ($this->multiWord as [$keys, $salutation]) {
@@ -92,13 +114,11 @@ class SalutationMapper extends AbstractMapper
             $subset = array_slice($parts, $start, $length);
 
             if ($this->isMatchingSubset($keys, $subset)) {
-                array_splice($parts, $start, $length, [new Salutation(implode(' ', $subset), $salutation)]);
-
-                return $parts;
+                return [new Salutation(implode(' ', $subset), $salutation), $length];
             }
         }
 
-        return $parts;
+        return [$current, 1];
     }
 
     /**

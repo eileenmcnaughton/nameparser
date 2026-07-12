@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Confidence;
+use Iliaal\NameParser\Language\German;
 use Iliaal\NameParser\Name;
 use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -58,5 +59,13 @@ class NameConfidenceTest extends TestCase
 
         $this->assertArrayHasKey('ambiguous', $result);
         $this->assertArrayHasKey('notes', $result);
+    }
+
+    public function testParsedConfidenceUsesConfiguredLanguages(): void
+    {
+        $name = (new Parser([new German()]))->parse('JOHN MBA');
+
+        $this->assertSame('Mba', $name->getLastname());
+        $this->assertFalse($name->getConfidence()['ambiguous']);
     }
 }
