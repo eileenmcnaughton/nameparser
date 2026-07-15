@@ -789,6 +789,63 @@ class ParserTest extends TestCase
         $this->assertSame('Jack, Rob', $comma->getNickname());
     }
 
+    /**
+     * custom multi-char pairs must shield on the left segment when a structural
+     * comma follows (segment sub-parsers re-enter parse() and must inherit the
+     * delimiter map used by the structural-comma mask)
+     */
+    public function testCustomDelimiterLeftSegmentWithTrailingCredential(): void
+    {
+        foreach ([['%%' => '%%'], ['«' => '»'], ['<<' => '>>']] as $delimiters) {
+            $parser = (new Parser())->setNicknameDelimiters($delimiters);
+            $open = array_key_first($delimiters);
+            $close = $delimiters[$open];
+            $input = "John {$open}Bob, Jr{$close} Smith, MD";
+            $name = $parser->parse($input);
+
+            $this->assertSame('John', $name->getFirstname(), $input);
+            $this->assertSame('Smith', $name->getLastname(), $input);
+            $this->assertSame('Bob, Jr', $name->getNickname(), $input);
+            $this->assertSame('MD', $name->getSuffix(), $input);
+        }
+    }
+
+    public function testCustomDelimiterNicknameOnSurnameWithGivenSegment(): void
+    {
+        $parser = (new Parser())->setNicknameDelimiters(['%%' => '%%']);
+        $name = $parser->parse('%%Bob, Jr%% Smith, John');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('Bob, Jr', $name->getNickname());
+    }
+
+    public function testEmptyWhitespaceDropsEmptyTokensFromExports(): void
+    {
+        $name = (new Parser())->setWhitespace('')->parse('John  Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('John', $name->getGivenName());
+        $this->assertSame('John Smith', $name->getFullName());
+    }
+
+    public function testSetMappersDoesNotAffectCommaForm(): void
+    {
+        $parser = (new Parser())->setMappers([new FirstnameMapper()]);
+
+        $this->assertSame('', $parser->parse('John Smith')->getLastname());
+        $this->assertSame('Smith', $parser->parse('Smith, John')->getLastname());
+        $this->assertSame('John', $parser->parse('Smith, John')->getFirstname());
+    }
+
+    public function testParsedNameRecordsNormalizedSource(): void
+    {
+        $name = (new Parser())->parse('  Jane Doe  ');
+
+        $this->assertSame('Jane Doe', $name->getSource());
+    }
+
     public function testMismatchedNestedCloserDoesNotLeakIntoNameParts(): void
     {
         $name = (new Parser())->parse('John (Bob [X) Y] Z)');

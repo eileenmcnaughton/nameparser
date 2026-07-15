@@ -49,6 +49,7 @@ class NicknameMapper extends AbstractMapper
         $this->delimiters = array_filter(
             $this->delimiters,
             static fn(string $close, string $open): bool => $open !== ''
+                && $close !== ''
                 && mb_check_encoding($open, 'UTF-8')
                 && mb_check_encoding($close, 'UTF-8'),
             ARRAY_FILTER_USE_BOTH

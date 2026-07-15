@@ -165,6 +165,18 @@ class RobustnessTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
+    public function testEmptyNicknameCloserIsIgnoredWithoutWarnings(): void
+    {
+        // empty closer cannot close a span; drop the pair and fall back to no-op
+        // nickname extraction rather than swallowing the token forever
+        $parser = (new Parser())->setNicknameDelimiters(['(' => '']);
+        $name = $parser->parse('John (Bob) Smith');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getNickname());
+    }
+
     public function testCustomWhitespaceTrimsEdges(): void
     {
         $parser = new Parser();

@@ -10,12 +10,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
 - Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
+- A pure all-caps unknown-candidate segment with no prior dictionary anchor is kept as a name rather than promoted to a suffix when a later credential appears (`Smith, JOHN, MD` → first `John`, suffix `MD`). Unknown candidates still ride after a known credential (`MD, FACS`) and peel from a mixed segment onto a later dictionary segment (`John FACS, MD`). Prefer `Smith, MD, FACS` when the unknown stands alone before the known credential.
+- `getConfidence()` only considers collisions present in the parser's configured suffix dictionaries (standalone `Confidence::assess($string)` without a second argument still uses the full ambiguous-key table).
 
 ### Fixed
 
 - Comma credentials retain source order, and an unknown all-caps candidate cannot cross a preserved name segment to consume a given name.
 - Custom unclosed nickname delimiters are removed exactly without `ltrim()` character-mask warnings, and nested delimiters use stack semantics so a mismatched closer cannot terminate an outer nickname span.
 - Comma and surname-first subparsers honor custom whitespace, and parsed confidence uses the parser's configured suffix dictionaries.
+- Segment sub-parsers inherit nickname delimiters, so a custom multi-character pair shields commas on the left segment when a structural comma follows (`John %%Bob, Jr%% Smith, MD`).
+- Surname-side nicknames are extracted when the given segment is a real name (`John (Bob) Smith, Jane`).
+- `setWhitespace('')` no longer leaves empty tokens that pollute `getGivenName()` / `full_name` with a stray space on double-spaced input.
+- Empty nickname closer strings are dropped with empty openers, so invalid delimiter config degrades to a no-op instead of an unclosable span.
+- Uniform-uppercase detection on comma input splits on commas as well as whitespace, so comma-dense rows do not force a full-string Unicode letters scan.
 
 ### For contributors
 

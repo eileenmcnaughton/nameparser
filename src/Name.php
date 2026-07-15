@@ -277,7 +277,12 @@ class Name
 
         foreach ($this->parts as $part) {
             if ($part instanceof AbstractPart && $this->isType($part, $type, $strict)) {
-                $matched[] = $part->normalize();
+                $normalized = $part->normalize();
+                // skip empty normalized values so a blank token cannot inject a
+                // stray space into given_name / full_name joins
+                if ($normalized !== '') {
+                    $matched[] = $normalized;
+                }
             }
         }
 

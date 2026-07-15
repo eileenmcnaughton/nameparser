@@ -44,6 +44,16 @@ class CommaSegmentTest extends TestCase
             'mixed credential positions keep source order' => ['Smith, MD, John PhD', 'John', '', 'Smith', 'MD PhD'],
             'candidate cannot cross a name segment' => ['Smith, JOHN, Robert, MD', 'John', 'Robert', 'Smith', 'MD'],
             'unknown candidate cannot cross a name segment' => ['Smith, FACS, John, MD', 'Facs', 'John', 'Smith', 'MD'],
+            // pure all-caps given segments are names, not pre-anchor credentials
+            'all-caps given before credential stays name' => ['Smith, JOHN, MD', 'John', '', 'Smith', 'MD'],
+            'all-caps multi-token given before credential' => ['Smith, JOHN PAUL, MD', 'John', 'Paul', 'Smith', 'MD'],
+            // pure unknown-candidate segments only ride after a dictionary anchor
+            'pure unknown before dictionary stays name' => ['Smith, FACS, MD', 'Facs', '', 'Smith', 'MD'],
+            // mixed-segment trailing candidate peels onto a later dictionary segment
+            'mixed segment trailing candidate rides on later dictionary' => ['Smith, John FACS, MD', 'John', '', 'Smith', 'FACS MD'],
+            // terminal-token guard: ALL-CAPS lone ambiguous given is a credential
+            'terminal all-caps ambiguous is credential' => ['Smith, DO', '', '', 'Smith', 'DO'],
+            'terminal title-case ambiguous stays name' => ['Smith, Do', 'Do', '', 'Smith', ''],
         ];
     }
 

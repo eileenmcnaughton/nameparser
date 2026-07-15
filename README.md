@@ -88,8 +88,11 @@ $name->getSuffix();       // "DDS"
 $name->getFullName();     // "Jane A. Doe"
 ```
 
-The full getter surface (`getMiddlename()`, `getNickname()`, `getLastnamePrefix()`,
-`getGivenName()`, `getAll()`) is unchanged from upstream.
+Beyond the example above, `Name` also exposes `getMiddlename()`, `getNickname()`,
+`getLastnamePrefix()`, `getGivenName()`, `getAll()`, `toArray()`,
+`getConfidence()`, and `getSource()`. `getLastname(true)` returns the surname
+without any particle prefix; the default `getLastname()` already includes
+prefixes.
 
 ### Structured output
 
@@ -107,6 +110,9 @@ $parser->parse('Dr. Jane A. Doe DDS')->toArray();
 // ]
 ```
 
+Note that `lastname` already includes any particle prefix (`de la Torre`);
+`lastname_prefix` is a convenience extract, not a component to prepend.
+
 ### Confidence / ambiguity
 
 For batch imports where a wrong split is a data-integrity problem, check whether
@@ -116,11 +122,11 @@ standalone pre-check on a raw string, or on the parsed result itself.
 ```php
 use Iliaal\NameParser\Confidence;
 
-// pre-check, before parsing
+// pre-check, before parsing (default English ambiguous-key set)
 $result = Confidence::assess('NGUYEN, VI');
 // ['ambiguous' => true, 'notes' => ["'VI' could be a name or a credential; input casing is uniform"]]
 
-// or read it off the parse; same signal, derived from the same input
+// or read it off the parse; uses the same input and the parser's suffix dictionaries
 $result = $parser->parse('NGUYEN, VI')->getConfidence();
 
 if ($result['ambiguous']) {
@@ -132,6 +138,11 @@ if ($result['ambiguous']) {
 an advisory pass you opt into. A mixed-case input like `"Nguyen, Vi"` stays
 unflagged; the title-case `Vi` resolves to the given name.
 
+For a non-default language set, standalone `Confidence::assess($string)` still
+uses the full English ambiguous-key table. To match a custom parser, either call
+`Name::getConfidence()` after `parse()`, or pass the parser's suffix dictionary
+as the second argument to `assess()`.
+
 > **All-caps limitation.** Disambiguation keys off casing, so uniform-case input
 > (all-caps legacy and registry data, or all-lowercase) carries no signal: an
 > ambiguous trailing token reads as a credential by default. The confidence pass
@@ -142,9 +153,10 @@ unflagged; the title-case `Vi` resolves to the given name.
 
 ### Languages
 
-`new Parser()` uses the English dictionary. Passing languages replaces that list:
-`new Parser([new German()])` gives you German salutations and German suffixes,
-not the English professional credentials.
+`new Parser()` uses the English dictionary. Passing languages **replaces** that
+list entirely (salutations, suffixes, and surname particles), it does not merge
+onto English. `new Parser([new German()])` gives German honorifics and ordinals
+only, not English professional credentials or English particles such as `van`.
 
 Compose dictionaries when you need both:
 
@@ -158,6 +170,22 @@ $parser = new Parser([new English(), new German()]);
 Dictionary keys merge in constructor order, and the first language wins on
 collisions. With English first, `Fr.` resolves to `Fr.`. With German first, it
 resolves to `Frau`.
+
+### Configuration
+
+Fluent setters on `Parser`:
+
+- `setSurnameFirst(true)` reads comma-less space-separated names in CJK order
+  (`Mao Zedong` → last `Mao`). Opt-in; romanized order cannot be auto-detected.
+- `setNicknameDelimiters(['<<' => '>>'])` **replaces** the default pairs
+  (`()[]{}<>` and quotes). An empty array restores the defaults; it does not
+  disable nicknames.
+- `setWhitespace`, `setMaxCombinedInitials`, `setMaxSalutationIndex` tune
+  collapse and mapper gates.
+- `setMappers([...])` replaces the single-segment (Western, no-comma) pipeline
+  only. Comma forms and `setSurnameFirst(true)` use dedicated sub-parsers that
+  always build their own mapper lists from the language dictionaries. Pass `[]`
+  to restore the default pipeline.
 
 ### Parsing limits
 
@@ -177,14 +205,19 @@ surnames.
 Unknown trailing credentials follow the same casing rule as the ambiguous
 tokens. When a known credential anchors the tail and the input is mixed-case, an
 adjacent unknown all-caps token is kept as a credential too: `John Smith MD FACS`
-keeps both `MD` and `FACS` in the suffix. Uniform all-caps rows cannot do this;
+and `Smith, John, MD, FACS` keep both in the suffix. A pure all-caps segment
+with no prior dictionary anchor is kept as a name (`Smith, JOHN, MD` → first
+`John`, suffix `MD`), because it is indistinguishable from an all-caps given
+name. Prefer the known credential first when the unknown stands alone
+(`Smith, MD, FACS`). Uniform all-caps rows cannot recover unknown credentials;
 with no case signal an unknown token could equally be a surname, so it stays in
 the name.
 
-`getFullName()` and `__toString()` (and `toArray()['full_name']`) are display
-forms. They drop the comma structure and are not guaranteed to re-parse to the
-same fields (for example a surname-plus-credential row), so treat them as output,
-not as a round-trippable serialization.
+`getFullName()` and `toArray()['full_name']` are the given name plus surname only
+(no salutation, nickname, or suffix). `__toString()` is the richer display line
+from `getAll(true)` (salutation through suffix, nickname wrapped). Both drop
+comma structure and are not guaranteed to re-parse to the same fields, so treat
+them as output, not as a round-trippable serialization.
 
 ### Performance
 

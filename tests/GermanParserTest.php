@@ -100,4 +100,15 @@ class GermanParserTest extends TestCase
         $this->assertSame('Schmidt', $name->getLastname());
         $this->assertSame('MD', $name->getSuffix());
     }
+
+    public function testGermanOnlyDoesNotLoadEnglishCredentials(): void
+    {
+        $name = (new Parser([new German()]))->parse('Herr Hans Schmidt MD');
+
+        $this->assertSame('Herr', $name->getSalutation());
+        $this->assertSame('Hans', $name->getFirstname());
+        $this->assertSame('', $name->getSuffix());
+        // MD is not in the German dictionary, so it stays in the name stream
+        $this->assertStringContainsStringIgnoringCase('md', $name->getLastname() . $name->getMiddlename());
+    }
 }

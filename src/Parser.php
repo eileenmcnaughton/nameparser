@@ -166,7 +166,7 @@ class Parser
         }
 
         if ($this->surnameFirst) {
-            $tokens = explode(' ', $name);
+            $tokens = $this->tokenizeWords($name);
 
             if (count($tokens) > 1) {
                 // a leading salutation ("Dr. Kim Jong Un") is not the surname:
@@ -187,7 +187,7 @@ class Parser
             }
         }
 
-        return $this->parseParts(explode(' ', $name))->setSource($name);
+        return $this->parseParts($this->tokenizeWords($name))->setSource($name);
     }
 
     /**
@@ -209,7 +209,7 @@ class Parser
             // as the comma-less surname-first route, so the honorific is not
             // shifted away as the surname token.
             if ($this->surnameFirst) {
-                $surnameTokens = explode(' ', trim($surname));
+                $surnameTokens = $this->tokenizeWords(trim($surname));
                 $peeled = $this->peelLeadingSalutations($surnameTokens);
 
                 if (count($surnameTokens) > 1) {
@@ -231,7 +231,7 @@ class Parser
 
         return $this->parseSplitParts(
             $surname,
-            explode(' ', $given),
+            $this->tokenizeWords($given),
             $this->isUniformUpperInput($surname . ' ' . $given),
         );
     }
@@ -253,7 +253,7 @@ class Parser
         }
 
         if ($this->surnameFirst && ! $this->hasGivenNameParts($givenName)) {
-            $surnameTokens = explode(' ', trim($surname));
+            $surnameTokens = $this->tokenizeWords(trim($surname));
             $peeled = $this->peelLeadingSalutations($surnameTokens);
 
             if (count($surnameTokens) > 1) {
@@ -287,8 +287,16 @@ class Parser
      * classify the post-first-comma segments: a segment whose every token is a
      * credential (dictionary suffix under the casing rule, or an all-caps
      * unknown-credential candidate) becomes Suffix parts; the rest are returned
-     * verbatim to fold back into the given segment. Candidates only count inside
-     * a contiguous credential run anchored by a real dictionary suffix.
+     * verbatim to fold back into the given segment.
+     *
+     * Unknown all-caps candidates ride only inside a contiguous credential run
+     * anchored by a real dictionary suffix: post-anchor pure candidate segments
+     * (`MD, FACS`), same-segment tails (`John Smith MD FACS`), and a trailing
+     * candidate run in a mixed segment that a later dictionary segment anchors
+     * (`John FACS, MD`). A pure candidate segment with no prior anchor
+     * (`Smith, JOHN, MD` / `Smith, FACS, MD`) is kept as a name: it is
+     * indistinguishable from an all-caps given name, so promoting it would
+     * swallow real names into the suffix.
      *
      * @param  list<string>  $tailSegments
      * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
@@ -297,7 +305,7 @@ class Parser
     {
         /** @var array<int, \Iliaal\NameParser\Part\AbstractPart|string> $parts */
         $parts = [];
-        /** @var list<list<string>> $pendingCandidates */
+        /** @var list<list<string>> $pendingCandidates trailing class-2 peels from mixed segments */
         $pendingCandidates = [];
         $runAnchored = false;
 
@@ -307,7 +315,10 @@ class Parser
                 continue;
             }
 
-            $tokens = explode(' ', $trimmed);
+            $tokens = $this->tokenizeWords($trimmed);
+            if ($tokens === []) {
+                continue;
+            }
 
             $classes = [];
             $hasDictionarySuffix = false;
@@ -322,18 +333,27 @@ class Parser
             }
 
             if (! $this->isCredentialOnlySegment($classes)) {
-                $this->appendCandidateSegments($parts, $pendingCandidates, $runAnchored);
+                // mixed / name segment ends any pure post-anchor run; leftover
+                // peels without a following dictionary segment stay names
+                $this->appendCandidateSegments($parts, $pendingCandidates, false);
                 $pendingCandidates = [];
                 $runAnchored = false;
 
-                foreach ($this->mapCommaSegmentSuffixes($tokens, $uniformInput) as $part) {
+                [$headTokens, $trailingCandidates] = $this->splitTrailingCandidates($classes);
+
+                foreach ($this->mapCommaSegmentSuffixes($headTokens, $uniformInput) as $part) {
                     $parts[] = $part;
+                }
+
+                if ($trailingCandidates !== []) {
+                    $pendingCandidates[] = $trailingCandidates;
                 }
 
                 continue;
             }
 
             if ($hasDictionarySuffix) {
+                // mixed-segment trailing peels ride on this dictionary anchor
                 $this->appendCandidateSegments($parts, $pendingCandidates, true);
                 $pendingCandidates = [];
                 $runAnchored = true;
@@ -352,13 +372,76 @@ class Parser
                     $parts[] = new Suffix($token);
                 }
             } else {
-                $pendingCandidates[] = $tokens;
+                // pure unknown-candidate segment with no dictionary anchor yet:
+                // keep as name tokens (not pending). Promoting later would turn
+                // an all-caps given name into a suffix ("Smith, JOHN, MD").
+                foreach ($tokens as $token) {
+                    $parts[] = $token;
+                }
             }
         }
 
-        $this->appendCandidateSegments($parts, $pendingCandidates, $runAnchored);
+        // trailing peels with no dictionary segment after them stay names
+        $this->appendCandidateSegments($parts, $pendingCandidates, false);
 
         return $parts;
+    }
+
+    /**
+     * peel a trailing run of unknown-credential candidates (class 2) off a
+     * mixed segment so a later dictionary segment can anchor them
+     * ("John FACS, MD"). An all-candidate segment is not peeled: that path is
+     * handled as pure candidates above.
+     *
+     * @param  list<array{0: string, 1: int}>  $classes
+     * @return array{0: list<string>, 1: list<string>}
+     */
+    private function splitTrailingCandidates(array $classes): array
+    {
+        $count = count($classes);
+        $lastNonCandidate = $count - 1;
+
+        while ($lastNonCandidate >= 0 && $classes[$lastNonCandidate][1] === 2) {
+            $lastNonCandidate--;
+        }
+
+        if ($lastNonCandidate < 0 || $lastNonCandidate === $count - 1) {
+            $head = [];
+            foreach ($classes as [$token]) {
+                $head[] = $token;
+            }
+
+            return [$head, []];
+        }
+
+        $head = [];
+        for ($i = 0; $i <= $lastNonCandidate; $i++) {
+            $head[] = $classes[$i][0];
+        }
+
+        $trailing = [];
+        for ($i = $lastNonCandidate + 1; $i < $count; $i++) {
+            $trailing[] = $classes[$i][0];
+        }
+
+        return [$head, $trailing];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tokenizeWords(string $text): array
+    {
+        /** @var list<string> $tokens */
+        $tokens = [];
+
+        foreach (explode(' ', $text) as $token) {
+            if ($token !== '') {
+                $tokens[] = $token;
+            }
+        }
+
+        return $tokens;
     }
 
     /**
@@ -449,7 +532,9 @@ class Parser
     {
         $hasUpper = false;
 
-        foreach (preg_split('/\s+/', $name) ?: [] as $token) {
+        // split on commas too: a comma-dense hostile row must not become one
+        // megabyte "token" that Text::letters() re-scans with a Unicode regex
+        foreach (preg_split('/[\s,]+/u', $name) ?: [] as $token) {
             $letters = Text::letters($token);
 
             if ($letters === '') {
@@ -484,11 +569,23 @@ class Parser
      */
     private function parseParts(array $parts): Name
     {
-        foreach ($this->getMappers() as $mapper) {
-            $parts = $mapper->map($parts);
+        // empty string tokens (double spaces when whitespace collapse is off)
+        // would otherwise become empty Firstname/Middlename parts and pollute
+        // joined exports with a stray space
+        $filtered = [];
+        foreach ($parts as $part) {
+            if (is_string($part) && $part === '') {
+                continue;
+            }
+
+            $filtered[] = $part;
         }
 
-        return $this->makeName($parts);
+        foreach ($this->getMappers() as $mapper) {
+            $filtered = $mapper->map($filtered);
+        }
+
+        return $this->makeName($filtered);
     }
 
     /**
@@ -501,7 +598,7 @@ class Parser
 
     protected function getFirstSegmentParser(): Parser
     {
-        return $this->firstSegmentParser ??= (new Parser())->setWhitespace($this->getWhitespace())->setMappers([
+        return $this->firstSegmentParser ??= $this->newSegmentParser()->setMappers([
             new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
             new SuffixMapper($this->getSuffixes(), false, 2),
             new NicknameMapper($this->getNicknameDelimiters()),
@@ -514,9 +611,13 @@ class Parser
 
     protected function getSurnameSegmentParser(): Parser
     {
-        return $this->surnameSegmentParser ??= (new Parser())->setWhitespace($this->getWhitespace())->setMappers([
+        // inherits delimiters for structural-comma masking on re-entered parse();
+        // NicknameMapper runs so a left-side nick ("John (Bob) Smith, Jane") is
+        // extracted rather than folded into the surname
+        return $this->surnameSegmentParser ??= $this->newSegmentParser()->setMappers([
             new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
             new SuffixMapper($this->getSuffixes(), false, 1),
+            new NicknameMapper($this->getNicknameDelimiters()),
             new LastnameMapper($this->getPrefixes(), true, true),
         ]);
     }
@@ -526,7 +627,7 @@ class Parser
         if ($this->secondSegmentParser === null) {
             $this->secondSegmentInitialMapper = new InitialMapper($this->getMaxCombinedInitials(), true);
             $this->secondSegmentSuffixMapper = new SuffixMapper($this->getSuffixes(), true, 0);
-            $this->secondSegmentParser = (new Parser())->setWhitespace($this->getWhitespace())->setMappers([
+            $this->secondSegmentParser = $this->newSegmentParser()->setMappers([
                 $this->secondSegmentSuffixMapper,
                 new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
                 new NicknameMapper($this->getNicknameDelimiters()),
@@ -537,6 +638,18 @@ class Parser
         }
 
         return $this->secondSegmentParser;
+    }
+
+    /**
+     * sub-parsers re-enter parse() on already-split segments, so they must
+     * inherit both whitespace and nickname delimiters: the structural-comma
+     * mask keys off $this->nicknameDelimiters, not the mapper constructor arg
+     */
+    private function newSegmentParser(): Parser
+    {
+        return (new Parser())
+            ->setWhitespace($this->getWhitespace())
+            ->setNicknameDelimiters($this->getNicknameDelimiters());
     }
 
     /**

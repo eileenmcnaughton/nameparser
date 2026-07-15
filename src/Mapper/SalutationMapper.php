@@ -62,29 +62,6 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
-     * We pass the full parts array and the current position to allow
-     * not only single-word matches but also combined matches with
-     * subsequent words (parts).
-     *
-     * @param  PartArray  $parts
-     * @return PartArray
-     */
-    protected function substituteWithSalutation(array $parts, int $start): array
-    {
-        [$replacement, $consumed] = $this->matchAt($parts, $start);
-
-        if ($consumed === 1) {
-            $parts[$start] = $replacement;
-
-            return $parts;
-        }
-
-        array_splice($parts, $start, $consumed, [$replacement]);
-
-        return $parts;
-    }
-
-    /**
      * @param  PartArray  $parts
      * @return array{AbstractPart|string, int}
      */
@@ -148,13 +125,5 @@ class SalutationMapper extends AbstractMapper
         }
 
         return true;
-    }
-
-    /**
-     * check if the given word is a viable salutation
-     */
-    protected function isSalutation(string $word): bool
-    {
-        return array_key_exists($this->getKey($word), $this->salutations);
     }
 }
