@@ -43,6 +43,14 @@ class ConfidenceTest extends TestCase
         ];
     }
 
+    public function testSuffixFilterScopesAmbiguousKeys(): void
+    {
+        $this->assertTrue(Confidence::assess('ANH TRAN DO')['ambiguous']);
+        $this->assertFalse(Confidence::assess('ANH TRAN DO', [])['ambiguous']);
+        $this->assertFalse(Confidence::assess('ANH TRAN DO', ['md' => 'MD'])['ambiguous']);
+        $this->assertTrue(Confidence::assess('ANH TRAN DO', ['do' => 'DO'])['ambiguous']);
+    }
+
     #[DataProvider('ambiguousProvider')]
     public function testFlagsUninformativeCasing(string $input): void
     {

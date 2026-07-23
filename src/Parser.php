@@ -10,7 +10,9 @@ use Iliaal\NameParser\Mapper\MiddlenameMapper;
 use Iliaal\NameParser\Mapper\NicknameMapper;
 use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
+use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\GivenNamePart;
+use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Suffix;
 
 class Parser
@@ -121,6 +123,13 @@ class Parser
      */
     public function parse(string $name): Name
     {
+        // drop sticky @internal overrides on the main pipeline (memoized mappers)
+        foreach ($this->mappers as $mapper) {
+            if ($mapper instanceof InitialMapper || $mapper instanceof SuffixMapper) {
+                $mapper->setUniformUpperOverride(null);
+            }
+        }
+
         $name = $this->normalize($name);
 
         // split on commas that are not shielded inside a nickname span, so
@@ -129,8 +138,8 @@ class Parser
         $segments = $this->splitStructuralCommas($name);
 
         if (count($segments) > 1) {
-            $surname = array_shift($segments);
-            $tailSegments = $segments;
+            $surname = $segments[0];
+            $tailSegments = array_slice($segments, 1);
             $uniformUpper = $this->isUniformUpperInput($name);
 
             // a whole post-comma segment that is nothing but credentials
@@ -247,7 +256,57 @@ class Parser
             $givenName->getParts(),
         );
 
-        return $this->makeName($parts);
+        return $this->makeName($this->promoteSoleGenerationalSuffix($parts));
+    }
+
+    /**
+     * when comma form left a junior/senior suffix but no given name (e.g.
+     * "Smith, Junior"), the generational token is the given name, not a
+     * credential. Multi-token left sides that already carry a first name
+     * ("Sir James Reynolds, Junior") keep junior/senior as suffix.
+     *
+     * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
+     * @return array<int, \Iliaal\NameParser\Part\AbstractPart|string>
+     */
+    private function promoteSoleGenerationalSuffix(array $parts): array
+    {
+        $hasGiven = false;
+        $hasLast = false;
+        /** @var list<int> $genIndexes */
+        $genIndexes = [];
+
+        foreach ($parts as $i => $part) {
+            if ($part instanceof GivenNamePart && $part->normalize() !== '') {
+                $hasGiven = true;
+            }
+
+            if ($part instanceof Lastname && $part->normalize() !== '') {
+                $hasLast = true;
+            }
+
+            if (! ($part instanceof Suffix)) {
+                continue;
+            }
+
+            $key = Text::key($part->getValue());
+
+            if ($key === 'junior' || $key === 'senior') {
+                $genIndexes[] = $i;
+            }
+        }
+
+        if ($hasGiven || ! $hasLast || $genIndexes === []) {
+            return $parts;
+        }
+
+        foreach ($genIndexes as $i) {
+            $part = $parts[$i];
+            if ($part instanceof Suffix) {
+                $parts[$i] = new Firstname($part->getValue());
+            }
+        }
+
+        return $parts;
     }
 
     /**
@@ -300,10 +359,24 @@ class Parser
             }
 
             if (! $this->isCredentialOnlySegment($classes)) {
-                // mixed / name segment ends any pure post-anchor run; leftover
+                // a pure name segment ends any pure post-anchor run; leftover
                 // peels without a following dictionary segment stay names
                 $this->appendCandidateSegments($parts, $pendingCandidates, false);
                 $pendingCandidates = [];
+
+                // same-segment dictionary suffix anchors unknown candidates on
+                // this segment ("John MD FACS") and subsequent pure candidate
+                // segments ("John MD, FACS"). Hand the whole segment to the
+                // suffix mapper so the ride policy matches space form.
+                if ($hasDictionarySuffix) {
+                    foreach ($this->mapCommaSegmentSuffixes(array_column($classes, 0), $uniformInput) as $part) {
+                        $parts[] = $part;
+                    }
+                    $runAnchored = true;
+
+                    continue;
+                }
+
                 $runAnchored = false;
 
                 [$headTokens, $trailingCandidates] = $this->splitTrailingCandidates($classes);
@@ -648,6 +721,9 @@ class Parser
      * sub-parsers, so a custom list does not apply on that path either. The
      * language dictionaries do propagate to the sub-parsers.
      *
+     * Name::getConfidence() always uses the language-merged suffix dictionary
+     * (getSuffixes()), not a custom SuffixMapper's constructor map.
+     *
      * An empty list resets the parser to the default pipeline.
      *
      * @param  array<int, \Iliaal\NameParser\Mapper\AbstractMapper>  $mappers
@@ -668,8 +744,19 @@ class Parser
      */
     private function invalidateMapperCache(): void
     {
+        // languages are constructor-fixed for stock use; clear dict memos so a
+        // subclass that reassigns $languages and then calls a config setter does
+        // not keep the first merge forever
+        $this->prefixes = null;
+        $this->suffixes = null;
+        $this->salutations = null;
+
         if (! $this->customMappers) {
             $this->mappers = [];
+        } else {
+            // custom list identity is preserved, but stock mappers still pick up
+            // new maxCombinedInitials / maxSalutationIndex / delimiters / dicts
+            $this->resyncConfigurableMappers();
         }
 
         $this->firstSegmentParser = null;
@@ -677,6 +764,35 @@ class Parser
         $this->secondSegmentParser = null;
         $this->secondSegmentInitialMapper = null;
         $this->secondSegmentSuffixMapper = null;
+    }
+
+    /**
+     * rebuild Initial/Salutation/Nickname/Suffix mappers inside a custom list
+     * from the current parser config, preserving order and non-stock mappers
+     */
+    private function resyncConfigurableMappers(): void
+    {
+        foreach ($this->mappers as $i => $mapper) {
+            if ($mapper instanceof InitialMapper) {
+                $this->mappers[$i] = new InitialMapper(
+                    $this->maxCombinedInitials,
+                    $mapper->matchesLastPart(),
+                );
+            } elseif ($mapper instanceof SalutationMapper) {
+                $this->mappers[$i] = new SalutationMapper(
+                    $this->getSalutations(),
+                    $this->maxSalutationIndex,
+                );
+            } elseif ($mapper instanceof NicknameMapper) {
+                $this->mappers[$i] = new NicknameMapper($this->getNicknameDelimiters());
+            } elseif ($mapper instanceof SuffixMapper) {
+                $this->mappers[$i] = new SuffixMapper(
+                    $this->getSuffixes(),
+                    $mapper->matchesSinglePart(),
+                    $mapper->getReservedParts(),
+                );
+            }
+        }
     }
 
     /**
@@ -773,11 +889,7 @@ class Parser
             return $name;
         }
 
-        // nickname delimiter defaults: keep in lockstep with NicknameMapper so
-        // structural-comma masking and nickname extraction shield the same pairs
-        $delimiters = $this->nicknameDelimiters !== []
-            ? $this->nicknameDelimiters
-            : NicknameMapper::DEFAULT_DELIMITERS;
+        $delimiters = $this->getNicknameDelimiters();
 
         $pairs = [];
         /** @var array<string, true> $symmetric */
@@ -1060,15 +1172,18 @@ class Parser
     /**
      * @return array<int|string, string>
      */
-    protected function getPrefixes(): array
+    public function getLastnamePrefixes(): array
     {
         return $this->prefixes ??= $this->mergeFromLanguages('getLastnamePrefixes');
     }
 
     /**
+     * merged suffix dictionary for the configured languages (first language wins
+     * on key collision). Use as the second argument to Confidence::assess().
+     *
      * @return array<int|string, string>
      */
-    protected function getSuffixes(): array
+    public function getSuffixes(): array
     {
         return $this->suffixes ??= $this->mergeFromLanguages('getSuffixes');
     }
@@ -1076,9 +1191,17 @@ class Parser
     /**
      * @return array<int|string, string>
      */
-    protected function getSalutations(): array
+    public function getSalutations(): array
     {
         return $this->salutations ??= $this->mergeFromLanguages('getSalutations');
+    }
+
+    /**
+     * @return array<int|string, string>
+     */
+    protected function getPrefixes(): array
+    {
+        return $this->getLastnamePrefixes();
     }
 
     /**
@@ -1099,9 +1222,16 @@ class Parser
     /**
      * @return array<string, string>
      */
+    /**
+     * effective nickname delimiter pairs (defaults when none were set)
+     *
+     * @return array<string, string>
+     */
     public function getNicknameDelimiters(): array
     {
-        return $this->nicknameDelimiters;
+        return $this->nicknameDelimiters !== []
+            ? $this->nicknameDelimiters
+            : NicknameMapper::DEFAULT_DELIMITERS;
     }
 
     /**

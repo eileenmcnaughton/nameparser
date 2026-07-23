@@ -20,12 +20,19 @@ class InitialMapper extends AbstractMapper
         protected bool $matchLastPart = false,
     ) {}
 
+    public function getCombinedMax(): int
+    {
+        return $this->combinedMax;
+    }
+
+    public function matchesLastPart(): bool
+    {
+        return $this->matchLastPart;
+    }
+
     /**
-     * force the uniform-uppercase verdict instead of deriving it from the
-     * local part list. The comma pipeline sets this so the split gate reads the
-     * whole-input casing signal, not just the given segment ("Smith, JM" must
-     * see that "Smith" proves the input is mixed-case). Null restores
-     * self-derivation. Always reset after the parse; the mapper is memoized.
+     * @internal Comma-pipeline whole-input casing signal. Always reset after
+     * the parse; the mapper is memoized. Not part of the stable public API.
      */
     public function setUniformUpperOverride(?bool $override): void
     {

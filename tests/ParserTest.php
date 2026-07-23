@@ -2,6 +2,7 @@
 
 namespace Tests\Iliaal\NameParser;
 
+use Iliaal\NameParser\Confidence;
 use Iliaal\NameParser\Language\German;
 use Iliaal\NameParser\Mapper\FirstnameMapper;
 use Iliaal\NameParser\Name;
@@ -837,6 +838,40 @@ class ParserTest extends TestCase
         $this->assertSame('', $parser->parse('John Smith')->getLastname());
         $this->assertSame('Smith', $parser->parse('Smith, John')->getLastname());
         $this->assertSame('John', $parser->parse('Smith, John')->getFirstname());
+    }
+
+    public function testSetMappersDoesNotAffectSurnameFirst(): void
+    {
+        $parser = (new Parser())
+            ->setMappers([new FirstnameMapper()])
+            ->setSurnameFirst(true);
+
+        $this->assertSame('', $parser->setSurnameFirst(false)->parse('John Smith')->getLastname());
+
+        $parser->setSurnameFirst(true);
+        $name = $parser->parse('Mao Zedong');
+        $this->assertSame('Mao', $name->getLastname());
+        $this->assertSame('Zedong', $name->getFirstname());
+    }
+
+    public function testPromotedDefaultMappersPickUpConfigChanges(): void
+    {
+        $parser = new Parser();
+        $parser->setMappers($parser->getMappers());
+        $parser->setMaxCombinedInitials(4);
+
+        $this->assertSame('J M A B', $parser->parse('John JMAB Walker')->getInitials());
+        $this->assertSame('J M A B', $parser->parse('Walker, JMAB John')->getInitials());
+    }
+
+    public function testGetSuffixesIsPublicForConfidenceAssess(): void
+    {
+        $parser = new Parser();
+        $suffixes = $parser->getSuffixes();
+
+        $this->assertArrayHasKey('md', $suffixes);
+        $this->assertFalse(Confidence::assess('ANH TRAN DO', [])['ambiguous']);
+        $this->assertTrue(Confidence::assess('ANH TRAN DO', $suffixes)['ambiguous']);
     }
 
     public function testParsedNameRecordsNormalizedSource(): void

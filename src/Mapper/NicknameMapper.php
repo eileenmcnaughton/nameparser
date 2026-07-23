@@ -96,12 +96,20 @@ class NicknameMapper extends AbstractMapper
         /** @var list<int> $strayDrops lone symmetric-quote tokens to remove */
         $strayDrops = [];
 
+        $openerBytes = $this->openerBytes();
+
         foreach ($parts as $k => $part) {
             if ($part instanceof AbstractPart) {
                 continue;
             }
 
             $isEncapsulated = $delimiterStack !== [];
+
+            // most tokens never open a nickname; skip the opener regex when no
+            // delimiter byte is present and we are not already inside a span
+            if (! $isEncapsulated && $openerBytes !== '' && strpbrk($part, $openerBytes) === false) {
+                continue;
+            }
 
             if (preg_match($this->regexp, $part, $matches)) {
                 $opener = $matches[1];
@@ -298,5 +306,13 @@ class NicknameMapper extends AbstractMapper
         ));
 
         return '/^(' . $alternation . ')/u';
+    }
+
+    /**
+     * concatenated opener characters for a cheap strpbrk prefilter
+     */
+    private function openerBytes(): string
+    {
+        return implode('', array_keys($this->delimiters));
     }
 }

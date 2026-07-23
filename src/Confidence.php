@@ -21,10 +21,32 @@ class Confidence
      */
     public static function assess(string $original, ?array $suffixes = null): array
     {
-        $uniformUpper = Text::isUpperCase($original);
-        $uniformLower = Text::isLowerCase($original);
-
         $tokens = preg_split('/[\s,]+/u', trim($original), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        // derive uniform-case from tokens (same shape as the parser), never from
+        // a whole-string letters() strip on multi-megabyte hostile rows
+        $uniformUpper = true;
+        $uniformLower = true;
+        $hasCased = false;
+        foreach ($tokens as $token) {
+            $letters = Text::letters($token);
+            if ($letters === '') {
+                continue;
+            }
+            $hasCased = $hasCased
+                || $letters !== mb_strtolower($letters, 'UTF-8')
+                || $letters !== mb_strtoupper($letters, 'UTF-8');
+            if ($letters !== mb_strtoupper($letters, 'UTF-8')) {
+                $uniformUpper = false;
+            }
+            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
+                $uniformLower = false;
+            }
+        }
+        if (! $hasCased) {
+            $uniformUpper = false;
+            $uniformLower = false;
+        }
 
         $notes = [];
         foreach ($tokens as $token) {

@@ -51,9 +51,22 @@ class CommaSegmentTest extends TestCase
             'pure unknown before dictionary stays name' => ['Smith, FACS, MD', 'Facs', '', 'Smith', 'MD'],
             // mixed-segment trailing candidate peels onto a later dictionary segment
             'mixed segment trailing candidate rides on later dictionary' => ['Smith, John FACS, MD', 'John', '', 'Smith', 'FACS MD'],
+            // same-segment dictionary suffix anchors trailing unknown candidates
+            'mixed same-segment dict then unknown' => ['Garcia, Maria MD FACS', 'Maria', '', 'Garcia', 'MD FACS'],
+            'mixed same-segment multi-token then unknown' => ['Smith, John MD FACS', 'John', '', 'Smith', 'MD FACS'],
+            // mixed segment with dict suffix then pure unknown segment
+            'mixed then pure unknown segment rides' => ['Smith, John MD, FACS', 'John', '', 'Smith', 'MD FACS'],
+            // trailing unknown peel without later dictionary stays a name
+            'mixed trailing unknown without later dict stays name' => ['Smith, John FACS', 'John', 'Facs', 'Smith', ''],
             // terminal-token guard: ALL-CAPS lone ambiguous given is a credential
             'terminal all-caps ambiguous is credential' => ['Smith, DO', '', '', 'Smith', 'DO'],
             'terminal title-case ambiguous stays name' => ['Smith, Do', 'Do', '', 'Smith', ''],
+            // junior/senior sole or leading given are names, not credentials
+            'sole junior is given name' => ['Smith, Junior', 'Junior', '', 'Smith', ''],
+            'sole senior is given name' => ['Smith, Senior', 'Senior', '', 'Smith', ''],
+            'leading junior before given' => ['Smith, Junior Paul', 'Junior', 'Paul', 'Smith', ''],
+            // multi-token left side keeps generational junior as suffix
+            'generational junior after structured left' => ['Sir James Reynolds, Junior', 'James', '', 'Reynolds', 'Junior'],
         ];
     }
 

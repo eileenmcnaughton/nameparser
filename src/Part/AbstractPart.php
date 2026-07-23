@@ -85,6 +85,11 @@ abstract class AbstractPart
             return $this->camelcaseCache = $word;
         }
 
+        // hostile long tokens: one title-case pass, no per-run callback
+        if (strlen($word) > 256) {
+            return $this->camelcaseCache = mb_convert_case($word, MB_CASE_TITLE, 'UTF-8');
+        }
+
         // preg_replace_callback returns null on regex error; fall back to the input.
         return $this->camelcaseCache = preg_replace_callback('/[\p{L}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
     }

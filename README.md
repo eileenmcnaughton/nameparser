@@ -140,16 +140,16 @@ unflagged; the title-case `Vi` resolves to the given name.
 
 For a non-default language set, standalone `Confidence::assess($string)` still
 uses the full English ambiguous-key table. To match a custom parser, either call
-`Name::getConfidence()` after `parse()`, or pass the parser's suffix dictionary
-as the second argument to `assess()`.
+`Name::getConfidence()` after `parse()`, or pass `$parser->getSuffixes()` as the
+second argument to `assess()`.
 
 > **All-caps limitation.** Disambiguation keys off casing, so uniform-case input
 > (all-caps legacy and registry data, or all-lowercase) carries no signal: an
 > ambiguous trailing token reads as a credential by default. The confidence pass
-> flags these when the token plausibly collides with a real name (`Do`, `Vi`,
-> `Ma`, roman numerals, `MBA`), so you can route them to review. Clean
-> credentials that are not also names (`RN`, `PT`, `OD`) are left unflagged to
-> keep review volume manageable on all-caps datasets.
+> flags these when the token is name-leaning (`Do`, `Vi`, `Ma`, `Ba`, `Lac`) or a
+> Census surname collision (`II`, `III`, `IV`, `MBA`). Clean credentials that are
+> not also names (`RN`, `PT`, `OD`, and other roman numerals such as `VII`) are
+> left unflagged to keep review volume manageable on all-caps datasets.
 
 ### Languages
 

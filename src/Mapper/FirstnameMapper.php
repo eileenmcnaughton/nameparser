@@ -55,7 +55,6 @@ class FirstnameMapper extends AbstractMapper
     protected function findFirstnamePosition(array $parts): ?int
     {
         $pos = null;
-
         $length = count($parts);
         $start = $this->getStartIndex($parts);
 
@@ -81,20 +80,38 @@ class FirstnameMapper extends AbstractMapper
     }
 
     /**
+     * index to begin the firstname search. After a leading honorific run
+     * (including a bare "The" before "Rev."), start past that run. When a
+     * salutation appears mid-stream after real name tokens, start at 0 so
+     * those tokens are not dropped from getters.
+     *
      * @param  PartArray  $parts
      */
     protected function getStartIndex(array $parts): int
     {
-        $index = $this->findFirstMapped(Salutation::class, $parts);
+        $firstSal = $this->findFirstMapped(Salutation::class, $parts);
 
-        if ($index === false) {
+        if ($firstSal === false) {
             return 0;
         }
 
-        if ($index === count($parts) - 1) {
+        for ($i = 0; $i < $firstSal; $i++) {
+            $part = $parts[$i];
+
+            if ($part instanceof AbstractPart) {
+                continue;
+            }
+
+            // only a leading article before an honorific is skipped ("The Rev.")
+            if ($this->getKey($part) !== 'the') {
+                return 0;
+            }
+        }
+
+        if ($firstSal === count($parts) - 1) {
             return 0;
         }
 
-        return $index + 1;
+        return $firstSal + 1;
     }
 }

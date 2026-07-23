@@ -68,6 +68,20 @@ class SuffixMapper extends AbstractMapper
         protected int $reservedParts = 2,
     ) {}
 
+    public function matchesSinglePart(): bool
+    {
+        return $this->matchSinglePart;
+    }
+
+    public function getReservedParts(): int
+    {
+        return $this->reservedParts;
+    }
+
+    /**
+     * @internal Comma-pipeline whole-input casing signal. Always reset after
+     * the parse; the mapper is memoized. Not part of the stable public API.
+     */
     public function setUniformUpperOverride(?bool $override): void
     {
         $this->uniformUpperOverride = $override;
@@ -330,6 +344,13 @@ class SuffixMapper extends AbstractMapper
             $part = $parts[$k];
 
             if (! is_string($part) || ! $this->isSuffix($part)) {
+                break;
+            }
+
+            // junior/senior at the head of a given segment are names
+            // ("Smith, Junior Paul"), not leading credentials like "MD John"
+            $key = $this->getKey($part);
+            if ($key === 'junior' || $key === 'senior') {
                 break;
             }
 
