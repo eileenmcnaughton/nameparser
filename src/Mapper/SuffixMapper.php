@@ -136,7 +136,7 @@ class SuffixMapper extends AbstractMapper
                     continue;
                 }
 
-                $uniformUpper ??= $this->isUniformUpperContext($parts);
+                $uniformUpper ??= $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
                 // a candidate is only credible inside the contiguous credential
                 // run at the tail; once a preserved name token has been crossed
@@ -362,55 +362,7 @@ class SuffixMapper extends AbstractMapper
             return false;
         }
 
-        // a bracket/quote-wrapped token is a nickname or aside ("(JJ)"), not a
-        // credential; those are resolved by later mappers, so leave them be.
-        if (preg_match('/[()\[\]{}<>"\']/', $part) === 1) {
-            return false;
-        }
-
-        if (! Text::isUpperCase($part)) {
-            return false;
-        }
-
-        return mb_strlen(Text::letters($part), 'UTF-8') >= 2;
-    }
-
-    /**
-     * true when every unmapped cased token is uppercase, i.e. the input casing
-     * gives no signal (all-caps registry data). Mirrors
-     * InitialMapper::isUniformUpperContext so the two casing gates agree.
-     *
-     * @param  PartArray  $parts
-     */
-    private function isUniformUpperContext(array $parts): bool
-    {
-        if ($this->uniformUpperOverride !== null) {
-            return $this->uniformUpperOverride;
-        }
-
-        $hasUpper = false;
-
-        foreach ($parts as $part) {
-            if ($part instanceof AbstractPart) {
-                continue;
-            }
-
-            $letters = Text::letters($part);
-
-            if ($letters === '') {
-                continue;
-            }
-
-            if (mb_strtoupper($letters, 'UTF-8') !== $letters) {
-                return false;
-            }
-
-            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
-                $hasUpper = true;
-            }
-        }
-
-        return $hasUpper;
+        return Text::isUnknownCredentialCandidate($part);
     }
 
     private function isTailNoise(string $part): bool

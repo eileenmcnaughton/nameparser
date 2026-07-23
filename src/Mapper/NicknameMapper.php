@@ -11,9 +11,12 @@ use Iliaal\NameParser\Part\Nickname;
 class NicknameMapper extends AbstractMapper
 {
     /**
+     * default nickname delimiter pairs; also used by Parser for structural
+     * comma masking so the two stay in lockstep
+     *
      * @var array<string, string>
      */
-    protected array $delimiters = [
+    public const array DEFAULT_DELIMITERS = [
         '[' => ']',
         '{' => '}',
         '(' => ')',
@@ -21,6 +24,11 @@ class NicknameMapper extends AbstractMapper
         '"' => '"',
         '\'' => '\'',
     ];
+
+    /**
+     * @var array<string, string>
+     */
+    protected array $delimiters = self::DEFAULT_DELIMITERS;
 
     protected string $regexp;
 
@@ -37,7 +45,7 @@ class NicknameMapper extends AbstractMapper
      */
     public function __construct(array $delimiters = [])
     {
-        if (! empty($delimiters)) {
+        if ($delimiters !== []) {
             $this->delimiters = $delimiters;
         }
 

@@ -21,10 +21,8 @@ class Confidence
      */
     public static function assess(string $original, ?array $suffixes = null): array
     {
-        $letters = Text::letters($original);
         $uniformUpper = Text::isUpperCase($original);
-        $uniformLower = $letters !== '' && $letters === mb_strtolower($letters, 'UTF-8')
-            && $letters !== mb_strtoupper($letters, 'UTF-8');
+        $uniformLower = Text::isLowerCase($original);
 
         $tokens = preg_split('/[\s,]+/u', trim($original), -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
@@ -39,9 +37,7 @@ class Confidence
                 continue;
             }
 
-            $tokenLetters = Text::letters($token);
-            $tokenLower = $tokenLetters !== '' && $tokenLetters === mb_strtolower($tokenLetters, 'UTF-8')
-                && $tokenLetters !== mb_strtoupper($tokenLetters, 'UTF-8');
+            $tokenLower = Text::isLowerCase($token);
 
             if ($uniformUpper) {
                 // an uppercase token is read as a credential and stripped; flag

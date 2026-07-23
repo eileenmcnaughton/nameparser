@@ -47,7 +47,7 @@ class InitialMapper extends AbstractMapper
         // shreds two-letter given names ("JO" -> J O). Suppress the split there
         // and keep the token as a name, mirroring the casing-as-signal policy of
         // SuffixMapper.
-        $splitCombined = ! $this->isUniformUpperContext($parts);
+        $splitCombined = ! $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
         $mapped = [];
 
@@ -98,61 +98,9 @@ class InitialMapper extends AbstractMapper
         // a caseless single character ("李") is a whole name, not an initial; an
         // initial is a genuinely cased letter ("É", "J"). Casing is the signal.
         if ($length === 1) {
-            return $this->isCased($part);
+            return Text::isCased($part);
         }
 
-        return $length === 2 && str_ends_with($part, '.') && $this->isCased($part);
-    }
-
-    /**
-     * true when the token's letters have a distinct upper/lower form, i.e. they
-     * carry a case signal (Latin, Greek, Cyrillic) rather than a caseless script
-     * (Han, Hebrew, Arabic).
-     */
-    private function isCased(string $part): bool
-    {
-        $letters = Text::letters($part);
-
-        return $letters !== ''
-            && mb_strtolower($letters, 'UTF-8') !== mb_strtoupper($letters, 'UTF-8');
-    }
-
-    /**
-     * true when every unmapped cased token is uppercase and none carries a
-     * lowercase letter, i.e. the input casing gives no signal (all-caps registry
-     * data). Already-mapped salutations and suffixes are ignored because their
-     * normalized values may differ from the original token casing.
-     *
-     * @param  PartArray  $parts
-     */
-    private function isUniformUpperContext(array $parts): bool
-    {
-        if ($this->uniformUpperOverride !== null) {
-            return $this->uniformUpperOverride;
-        }
-
-        $hasUpper = false;
-
-        foreach ($parts as $part) {
-            if ($part instanceof AbstractPart) {
-                continue;
-            }
-
-            $letters = Text::letters($part);
-
-            if ($letters === '') {
-                continue;
-            }
-
-            if (mb_strtoupper($letters, 'UTF-8') !== $letters) {
-                return false;
-            }
-
-            if ($letters !== mb_strtolower($letters, 'UTF-8')) {
-                $hasUpper = true;
-            }
-        }
-
-        return $hasUpper;
+        return $length === 2 && str_ends_with($part, '.') && Text::isCased($part);
     }
 }

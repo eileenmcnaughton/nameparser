@@ -73,4 +73,51 @@ final class Text
         return $letters === mb_strtoupper($letters, 'UTF-8')
             && $letters !== mb_strtolower($letters, 'UTF-8');
     }
+
+    /**
+     * true when the word's letters are all lowercase and carry a case signal
+     */
+    public static function isLowerCase(string $word): bool
+    {
+        $letters = self::letters($word);
+
+        if ($letters === '') {
+            return false;
+        }
+
+        return $letters === mb_strtolower($letters, 'UTF-8')
+            && $letters !== mb_strtoupper($letters, 'UTF-8');
+    }
+
+    /**
+     * true when the word's letters have a distinct upper/lower form (Latin,
+     * Greek, Cyrillic) rather than a caseless script (Han, Hebrew, Arabic)
+     */
+    public static function isCased(string $word): bool
+    {
+        $letters = self::letters($word);
+
+        return $letters !== ''
+            && mb_strtolower($letters, 'UTF-8') !== mb_strtoupper($letters, 'UTF-8');
+    }
+
+    /**
+     * an all-caps unknown token that reads as a credential candidate ("FACS"):
+     * at least two letters, not bracket/quote-wrapped. Callers still gate on
+     * dictionary membership and uniform-uppercase input.
+     */
+    public static function isUnknownCredentialCandidate(string $token): bool
+    {
+        // a bracket/quote-wrapped token is a nickname or aside ("(JJ)"), not a
+        // credential; those are resolved by later mappers, so leave them be.
+        if (preg_match('/[()\[\]{}<>"\']/', $token) === 1) {
+            return false;
+        }
+
+        if (! self::isUpperCase($token)) {
+            return false;
+        }
+
+        return mb_strlen(self::letters($token), 'UTF-8') >= 2;
+    }
 }

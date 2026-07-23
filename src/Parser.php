@@ -15,21 +15,6 @@ use Iliaal\NameParser\Part\Suffix;
 
 class Parser
 {
-    /**
-     * nickname delimiter pairs used to shield commas inside a delimited
-     * nickname from the comma split; mirrors NicknameMapper's defaults. The
-     * symmetric quotes pair on token boundaries only (a mid-token apostrophe
-     * is name content, not a delimiter).
-     */
-    private const array DEFAULT_NICKNAME_DELIMITERS = [
-        '[' => ']',
-        '{' => '}',
-        '(' => ')',
-        '<' => '>',
-        '"' => '"',
-        '\'' => '\'',
-    ];
-
     private const string COMMA_PLACEHOLDER = "\x00";
 
     protected string $whitespace = " \r\n\t";
@@ -168,22 +153,13 @@ class Parser
         if ($this->surnameFirst) {
             $tokens = $this->tokenizeWords($name);
 
-            if (count($tokens) > 1) {
-                // a leading salutation ("Dr. Kim Jong Un") is not the surname:
-                // peel it off and re-attach it to the surname segment where
-                // SalutationMapper classifies it, so the first real token
-                // becomes the surname rather than being shifted away
-                $peeled = $this->peelLeadingSalutations($tokens);
-
-                if (count($tokens) > 1) {
-                    $surname = array_shift($tokens);
-                    $surnameSegment = $peeled === []
-                        ? $surname
-                        : implode(' ', $peeled) . ' ' . $surname;
-
-                    return $this->parseSplitName($surnameSegment, implode(' ', $tokens))
-                        ->setSource($name);
-                }
+            // a leading salutation ("Dr. Kim Jong Un") is not the surname:
+            // peel it off and re-attach it to the surname segment where
+            // SalutationMapper classifies it, so the first real token
+            // becomes the surname rather than being shifted away
+            if (count($tokens) > 1 && ($taken = $this->takeSurnameFirst($tokens)) !== null) {
+                return $this->parseSplitName($taken[0], implode(' ', $taken[1]))
+                    ->setSource($name);
             }
         }
 
@@ -210,19 +186,15 @@ class Parser
             // shifted away as the surname token.
             if ($this->surnameFirst) {
                 $surnameTokens = $this->tokenizeWords(trim($surname));
-                $peeled = $this->peelLeadingSalutations($surnameTokens);
+                $taken = $this->takeSurnameFirst($surnameTokens);
 
-                if (count($surnameTokens) > 1) {
-                    $first = array_shift($surnameTokens);
-                    $segment = $peeled === []
-                        ? $first
-                        : implode(' ', $peeled) . ' ' . $first;
-
-                    return $this->parseSplitName($segment, implode(' ', $surnameTokens));
+                if ($taken !== null) {
+                    return $this->parseSplitName($taken[0], implode(' ', $taken[1]));
                 }
 
-                if ($peeled !== []) {
-                    $surname = implode(' ', array_merge($peeled, $surnameTokens));
+                $reattached = $this->reattachLeadingSalutations($surnameTokens);
+                if ($reattached !== null) {
+                    $surname = $reattached;
                 }
             }
 
@@ -241,29 +213,24 @@ class Parser
      */
     private function parseSplitParts(string $surname, array $givenParts, bool $uniformUpper): Name
     {
-        $this->getSecondSegmentParser();
+        $secondSegment = $this->getSecondSegmentParser();
         $this->secondSegmentInitialMapper?->setUniformUpperOverride($uniformUpper);
         $this->secondSegmentSuffixMapper?->setUniformUpperOverride($uniformUpper);
 
         try {
-            $givenName = $this->getSecondSegmentParser()->parseParts($givenParts);
+            $givenName = $secondSegment->parseParts($givenParts);
         } finally {
             $this->secondSegmentInitialMapper?->setUniformUpperOverride(null);
             $this->secondSegmentSuffixMapper?->setUniformUpperOverride(null);
         }
 
         if ($this->surnameFirst && ! $this->hasGivenNameParts($givenName)) {
-            $surnameTokens = $this->tokenizeWords(trim($surname));
-            $peeled = $this->peelLeadingSalutations($surnameTokens);
+            $taken = $this->takeSurnameFirst($this->tokenizeWords(trim($surname)));
 
-            if (count($surnameTokens) > 1) {
-                $first = array_shift($surnameTokens);
-                $segment = $peeled === []
-                    ? $first
-                    : implode(' ', $peeled) . ' ' . $first;
+            if ($taken !== null) {
                 $base = $this->parseSplitParts(
-                    $segment,
-                    $surnameTokens,
+                    $taken[0],
+                    $taken[1],
                     $this->isUniformUpperInput($surname),
                 );
 
@@ -406,12 +373,7 @@ class Parser
         }
 
         if ($lastNonCandidate < 0 || $lastNonCandidate === $count - 1) {
-            $head = [];
-            foreach ($classes as [$token]) {
-                $head[] = $token;
-            }
-
-            return [$head, []];
+            return [array_column($classes, 0), []];
         }
 
         $head = [];
@@ -464,12 +426,18 @@ class Parser
     private function mapCommaSegmentSuffixes(array $tokens, bool $uniformUpper): array
     {
         $this->getSecondSegmentParser();
-        $this->secondSegmentSuffixMapper?->setUniformUpperOverride($uniformUpper);
+        $mapper = $this->secondSegmentSuffixMapper;
+
+        if ($mapper === null) {
+            return $tokens;
+        }
+
+        $mapper->setUniformUpperOverride($uniformUpper);
 
         try {
-            return $this->secondSegmentSuffixMapper?->map($tokens) ?? $tokens;
+            return $mapper->map($tokens);
         } finally {
-            $this->secondSegmentSuffixMapper?->setUniformUpperOverride(null);
+            $mapper->setUniformUpperOverride(null);
         }
     }
 
@@ -511,12 +479,7 @@ class Parser
             return 1;
         }
 
-        if (
-            ! $uniformInput
-            && preg_match('/[()\[\]{}<>"\']/', $token) !== 1
-            && Text::isUpperCase($token)
-            && mb_strlen(Text::letters($token), 'UTF-8') >= 2
-        ) {
+        if (! $uniformInput && Text::isUnknownCredentialCandidate($token)) {
             return 2;
         }
 
@@ -810,9 +773,11 @@ class Parser
             return $name;
         }
 
+        // nickname delimiter defaults: keep in lockstep with NicknameMapper so
+        // structural-comma masking and nickname extraction shield the same pairs
         $delimiters = $this->nicknameDelimiters !== []
             ? $this->nicknameDelimiters
-            : self::DEFAULT_NICKNAME_DELIMITERS;
+            : NicknameMapper::DEFAULT_DELIMITERS;
 
         $pairs = [];
         /** @var array<string, true> $symmetric */
@@ -969,6 +934,47 @@ class Parser
         }
 
         return true;
+    }
+
+    /**
+     * peel leading salutations and take the next token as the surname. Returns
+     * null when fewer than two name tokens remain after peeling.
+     *
+     * @param  list<string>  $tokens
+     * @return array{0: string, 1: list<string>}|null
+     */
+    private function takeSurnameFirst(array $tokens): ?array
+    {
+        $peeled = $this->peelLeadingSalutations($tokens);
+
+        if (count($tokens) < 2) {
+            return null;
+        }
+
+        $surname = array_shift($tokens);
+        $segment = $peeled === []
+            ? $surname
+            : implode(' ', $peeled) . ' ' . $surname;
+
+        return [$segment, $tokens];
+    }
+
+    /**
+     * when the surname segment collapses to a single name token after peel,
+     * reattach any leading salutations so they stay on the segment (empty-given
+     * credential-only tail under surname-first)
+     *
+     * @param  list<string>  $tokens
+     */
+    private function reattachLeadingSalutations(array $tokens): ?string
+    {
+        $peeled = $this->peelLeadingSalutations($tokens);
+
+        if ($peeled === []) {
+            return null;
+        }
+
+        return implode(' ', array_merge($peeled, $tokens));
     }
 
     /**
