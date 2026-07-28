@@ -2,6 +2,7 @@
 
 namespace Iliaal\NameParser;
 
+use Iliaal\NameParser\Mapper\SalutationMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
 
 /**
@@ -75,6 +76,18 @@ class Confidence
                 $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
             } elseif ($tokenLower) {
                 $notes[] = "'{$token}' could be a name or a credential; token is lowercase";
+            }
+        }
+
+        // an honorific that is also a real name costs a name part when it leads a
+        // bare two-token input: "Lord Ashcroft" reads as title plus surname, but
+        // first name Lord is equally valid and nothing in the string decides it.
+        // A comma settles the question structurally ("Lord, Jack"), and a third
+        // token leaves a given name behind either way, so neither is flagged.
+        $lead = $tokens[0] ?? '';
+        if ($lead !== '' && count($tokens) === 2 && ! str_contains($original, ',')) {
+            if (isset(SalutationMapper::NAME_COLLIDING_KEYS[Text::key($lead)])) {
+                $notes[] = "'{$lead}' could be a name or a salutation; nothing in the input decides it";
             }
         }
 

@@ -651,7 +651,7 @@ class Parser
         // NicknameMapper runs so a left-side nick ("John (Bob) Smith, Jane") is
         // extracted rather than folded into the surname
         return $this->surnameSegmentParser ??= $this->newSegmentParser()->setMappers([
-            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
+            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex(), true),
             new SuffixMapper($this->getSuffixes(), false, 1),
             new NicknameMapper($this->getNicknameDelimiters()),
             new LastnameMapper($this->getPrefixes(), true, true),

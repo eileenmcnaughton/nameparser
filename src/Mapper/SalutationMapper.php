@@ -11,6 +11,25 @@ use Iliaal\NameParser\Part\Salutation;
 class SalutationMapper extends AbstractMapper
 {
     /**
+     * The article that may sit between the start of the name and an honorific
+     * ("The Rev. Mark Williams"). Anything else ends the leading run.
+     */
+    private const string LEADING_ARTICLE = 'the';
+
+    /**
+     * Salutation keys that are also real personal names, so reading one as an
+     * honorific costs a name part. Attested in the bundled NPI corpus: Lord (3
+     * surnames), Master (1 surname), Hon (1 given name). Dame, Lady and Pastor
+     * are unattested there but collide in other populations (Pastor is both a
+     * Spanish surname and a given name). Drives the requireRemainder guard
+     * below, and the leading-title note in Confidence.
+     */
+    public const array NAME_COLLIDING_KEYS = [
+        'dame' => true, 'hon' => true, 'lady' => true,
+        'lord' => true, 'master' => true, 'pastor' => true,
+    ];
+
+    /**
      * Multi-word salutation patterns ("the honorable", "his honour"), split
      * once. Single-word salutations are handled by the exact-match check in
      * matchAt(), so only these need the subset loop.
@@ -21,10 +40,14 @@ class SalutationMapper extends AbstractMapper
 
     /**
      * @param  array<int|string, string>  $salutations
+     * @param  bool  $requireRemainder  refuse to consume the segment's last
+     *                                  token, for segments the caller has
+     *                                  already asserted to be a surname
      */
     public function __construct(
         protected array $salutations,
         protected int $maxIndex = 0,
+        protected bool $requireRemainder = false,
     ) {
         foreach ($salutations as $key => $salutation) {
             if (str_contains((string) $key, ' ')) {
@@ -48,11 +71,37 @@ class SalutationMapper extends AbstractMapper
         $total = count($parts);
 
         while ($input < $total && $scanned < $max) {
-            if ($parts[$input] instanceof AbstractPart) {
+            $current = $parts[$input];
+
+            if ($current instanceof AbstractPart) {
                 break;
             }
 
             [$part, $consumed] = $this->matchAt($parts, $input);
+
+            // honorifics lead the name, so only a bare article may sit between
+            // the start and a title ("The Rev. Mark Williams"). Once a real name
+            // token is seen, a later dictionary hit belongs to the person rather
+            // than to a title, so "John Lord Smith Jr" keeps Lord as a middle
+            // name. An explicit maxSalutationIndex is the caller asserting that
+            // titles do appear further in ("Francis Mr"), so it opts out.
+            if ($this->maxIndex === 0
+                && is_string($part)
+                && $this->getKey($part) !== self::LEADING_ARTICLE) {
+                break;
+            }
+
+            // the comma form asserts everything before the comma is the surname,
+            // so consuming the segment whole would leave the name with no
+            // surname at all. Only yield the last token back when the title is
+            // also a real name ("Lord, Jack"); an unambiguous title stays a
+            // salutation ("Dr., John").
+            if ($this->requireRemainder
+                && $input + $consumed >= $total
+                && isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])) {
+                break;
+            }
+
             $mapped[] = $part;
             $input += $consumed;
             $scanned++;

@@ -6,8 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- English honorifics `Dame`, `Lady`, `Lord`, `Pastor`, `Professor`, `Reverend`, and `Rt Hon` (`Lord Ashcroft` → salutation `Lord`, surname `Ashcroft`). `Rt Hon` also matches its abbreviated and article-led forms (`Rt. Hon. Boris Johnson`, `The Rt Hon Boris Johnson`).
+
 ### Changed
 
+- `Confidence::assess()` flags a two-token input led by an honorific that is also a real name (`Lord Ashcroft`, `Pastor Gonzalez`, `Hon Chan`), where the title reading leaves no given name and nothing in the input decides between the two. A comma resolves it structurally (`Lord, Jack`) and a third token leaves a given name either way (`Lady Diana Spencer`), so neither is flagged.
 - Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
 - Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
 - A pure all-caps unknown-candidate segment with no prior dictionary anchor is kept as a name rather than promoted to a suffix when a later credential appears (`Smith, JOHN, MD` → first `John`, suffix `MD`). Unknown candidates still ride after a known credential (`MD, FACS`) and peel from a mixed segment onto a later dictionary segment (`John FACS, MD`). Prefer `Smith, MD, FACS` when the unknown stands alone before the known credential.
@@ -15,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A salutation that is also a real name no longer swallows the comma form's surname segment, so `Lord, Jack` keeps `Lord` as the surname (previously it became a salutation and the surname was dropped entirely). This also covers the pre-existing `Master, John` and `Hon, John`. An unambiguous title is unchanged: `Dr., John` still reads as a salutation.
+- A dictionary salutation that follows a real name token stays part of the name rather than being promoted and dropped from the getters, so `John Lord Smith Jr` keeps `Lord` as the middle name and `Blair, Kathleen MASTER OF SOCIAL WOR` no longer reports a `Mr.` salutation. Only a leading article may sit before an honorific (`The Rev. Mark Williams`); an explicit `setMaxSalutationIndex()` still scans past leading name tokens.
 - Comma credentials retain source order, and an unknown all-caps candidate cannot cross a preserved name segment to consume a given name.
 - Custom unclosed nickname delimiters are removed exactly without `ltrim()` character-mask warnings, and nested delimiters use stack semantics so a mismatched closer cannot terminate an outer nickname span.
 - Comma and surname-first subparsers honor custom whitespace, and parsed confidence uses the parser's configured suffix dictionaries.
