@@ -4,6 +4,7 @@ namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Salutation;
+use Iliaal\NameParser\Part\SalutationConnector;
 
 /**
  * @phpstan-import-type PartArray from AbstractMapper
@@ -15,6 +16,16 @@ class SalutationMapper extends AbstractMapper
      * ("The Rev. Mark Williams"). Anything else ends the leading run.
      */
     private const string LEADING_ARTICLE = 'the';
+
+    /**
+     * Tokens that join two titles into one honorific ("Mr. and Mrs."). Both
+     * render as "and" so the two spellings normalize to one salutation.
+     */
+    private const array CONNECTOR_KEYS = [
+        'and' => true, '&' => true,
+    ];
+
+    private const string CONNECTOR_RENDERED = 'and';
 
     /**
      * Salutation keys that are also real personal names, so reading one as an
@@ -78,6 +89,22 @@ class SalutationMapper extends AbstractMapper
             }
 
             [$part, $consumed] = $this->matchAt($parts, $input);
+
+            // a connector joining two titles is part of the honorific, not a
+            // given name ("Mr. and Mrs. Brad Smith" keeps Brad as the first
+            // name). It needs a title on both sides, so a stray "and" is never
+            // absorbed, and it does not count toward the scan budget because it
+            // is not itself a title.
+            if (is_string($part)
+                && isset(self::CONNECTOR_KEYS[$this->getKey($part)])
+                && $mapped !== []
+                && end($mapped) instanceof Salutation
+                && $this->isSalutationAt($parts, $input + $consumed)) {
+                $mapped[] = new SalutationConnector($part, self::CONNECTOR_RENDERED);
+                $input += $consumed;
+
+                continue;
+            }
 
             // honorifics lead the name, so only a bare article may sit between
             // the start and a title ("The Rev. Mark Williams"). Once a real name
@@ -145,6 +172,23 @@ class SalutationMapper extends AbstractMapper
         }
 
         return [$current, 1];
+    }
+
+    /**
+     * whether a title starts at the given index, used as the right-hand guard
+     * for a connector so "Mr. and Brad Smith" leaves the connector alone
+     *
+     * @param  PartArray  $parts
+     */
+    private function isSalutationAt(array $parts, int $index): bool
+    {
+        if (! isset($parts[$index]) || ! is_string($parts[$index])) {
+            return false;
+        }
+
+        [$part] = $this->matchAt($parts, $index);
+
+        return $part instanceof Salutation;
     }
 
     /**

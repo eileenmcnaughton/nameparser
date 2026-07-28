@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\SalutationConnector;
 
 class Name
 {
@@ -244,6 +245,26 @@ class Name
     public function getSalutation(): string
     {
         return $this->export('Salutation');
+    }
+
+    /**
+     * whether the honorific covers two people ("Mr. and Mrs. Brad Smith"). The
+     * parsed given and family name belong to the person actually named; the
+     * partner is implied by the title alone, so a caller importing households
+     * should branch on this rather than treat the row as one individual.
+     *
+     * Only a title-anchored form is detected. A bare "Brad and Jane Smith"
+     * carries no honorific to attach the connector to and reports false.
+     */
+    public function isJoint(): bool
+    {
+        foreach ($this->parts as $part) {
+            if ($part instanceof SalutationConnector) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

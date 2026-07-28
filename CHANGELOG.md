@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Joint salutations parse as one honorific, so `Mr. and Mrs. Brad Smith` keeps `Brad` as the first name instead of reading the connector as one (`Mr. & Mrs.` normalizes to the same value). Any pairing works (`Dr. and Mrs.`, `Ms. & Ms.`), and the connector needs a title on both sides, so `Mr. and Brad Smith` is left alone. Fixes #4.
+- `Name::isJoint()` reports a name whose honorific covers two people, for callers importing households. The parsed given and family name belong to the person actually named. Only the title-anchored form is detected: a bare `Brad and Jane Smith` has no honorific to anchor the connector and reports `false`.
 - English honorifics `Dame`, `Lady`, `Lord`, `Pastor`, `Professor`, `Reverend`, and `Rt Hon` (`Lord Ashcroft` → salutation `Lord`, surname `Ashcroft`). `Rt Hon` also matches its abbreviated and article-led forms (`Rt. Hon. Boris Johnson`, `The Rt Hon Boris Johnson`).
 
 ### Changed
