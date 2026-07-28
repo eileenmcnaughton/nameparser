@@ -11,7 +11,7 @@ use Iliaal\NameParser\Text;
  */
 class NicknameMapper extends AbstractMapper
 {
-    private const int MAX_NESTING_DEPTH = 64;
+    private const MAX_NESTING_DEPTH = 64;
 
     /**
      * default nickname delimiter pairs; also used by Parser for structural
@@ -19,7 +19,7 @@ class NicknameMapper extends AbstractMapper
      *
      * @var array<string, string>
      */
-    public const array DEFAULT_DELIMITERS = [
+    public const DEFAULT_DELIMITERS = [
         '[' => ']',
         '{' => '}',
         '(' => ')',

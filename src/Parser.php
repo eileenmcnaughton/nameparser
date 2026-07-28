@@ -18,7 +18,7 @@ use Iliaal\NameParser\Part\Suffix;
 
 class Parser
 {
-    private const string COMMA_PLACEHOLDER = "\x00";
+    private const COMMA_PLACEHOLDER = "\x00";
 
     protected string $whitespace = " \r\n\t";
 

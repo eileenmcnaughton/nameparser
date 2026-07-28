@@ -17,17 +17,17 @@ class SalutationMapper extends AbstractMapper
      * The article that may sit between the start of the name and an honorific
      * ("The Rev. Mark Williams"). Anything else ends the leading run.
      */
-    private const string LEADING_ARTICLE = 'the';
+    private const LEADING_ARTICLE = 'the';
 
     /**
      * Tokens that join two titles into one honorific ("Mr. and Mrs."). Both
      * render as "and" so the two spellings normalize to one salutation.
      */
-    private const array CONNECTOR_KEYS = [
+    private const CONNECTOR_KEYS = [
         'and' => true, '&' => true,
     ];
 
-    private const string CONNECTOR_RENDERED = 'and';
+    private const CONNECTOR_RENDERED = 'and';
 
     /**
      * Salutation keys that are also real personal names, so reading one as an
@@ -37,7 +37,7 @@ class SalutationMapper extends AbstractMapper
      * Spanish surname and a given name). Drives the requireRemainder guard
      * below, and the leading-title note in Confidence.
      */
-    public const array NAME_COLLIDING_KEYS = [
+    public const NAME_COLLIDING_KEYS = [
         'dame' => true, 'hon' => true, 'lady' => true,
         'lord' => true, 'master' => true, 'pastor' => true,
     ];

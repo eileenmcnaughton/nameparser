@@ -10,7 +10,7 @@ use Iliaal\NameParser\Part\SalutationConnector;
 
 class Name
 {
-    private const string PARTS_NAMESPACE = 'Iliaal\NameParser\Part';
+    private const PARTS_NAMESPACE = 'Iliaal\NameParser\Part';
 
     /**
      * @var array<int, AbstractPart|string> the parts that make up this name

@@ -20,7 +20,7 @@ class SuffixMapper extends AbstractMapper
      * These get casing + position disambiguation; everything else keeps the
      * original always-strip behavior.
      */
-    public const array AMBIGUOUS_KEYS = [
+    public const AMBIGUOUS_KEYS = [
         'do' => true, 'vi' => true, 'vii' => true, 'viii' => true,
         'ix' => true, 'x' => true, 'ma' => true, 'ms' => true,
         'pe' => true, 'dc' => true, 'pa' => true,
@@ -39,7 +39,7 @@ class SuffixMapper extends AbstractMapper
      * token in uniform-case input is genuinely undecidable: an uppercase "DO"
      * could be the surname Do, but an uppercase "RN" is almost always a cred.
      */
-    public const array NAME_LEANING_KEYS = [
+    public const NAME_LEANING_KEYS = [
         'do' => true, 'vi' => true, 'ma' => true, 'ba' => true, 'lac' => true,
     ];
 
@@ -52,8 +52,12 @@ class SuffixMapper extends AbstractMapper
      * are not real names (Rn, Pt, Od...) stay suppressed to keep review noise
      * down on the all-caps datasets this parser targets.
      */
-    public const array SURNAME_COLLIDING_KEYS = [
+    public const SURNAME_COLLIDING_KEYS = [
         'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
+    ];
+
+    private const TAIL_NOISE_KEYS = [
+        'unknown' => true,
     ];
 
     /**

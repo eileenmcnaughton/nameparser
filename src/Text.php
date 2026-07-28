@@ -11,15 +11,15 @@ namespace Iliaal\NameParser;
  */
 final class Text
 {
-    public const int MAX_INPUT_BYTES = 1024 * 1024;
+    public const MAX_INPUT_BYTES = 1024 * 1024;
 
-    public const int MAX_INPUT_TOKENS = 65536;
+    public const MAX_INPUT_TOKENS = 65536;
 
-    private const int MAX_NICKNAME_DELIMITER_BYTES = 64;
+    private const MAX_NICKNAME_DELIMITER_BYTES = 64;
 
-    private const int MAX_NICKNAME_DELIMITER_PAIRS = 32;
+    private const MAX_NICKNAME_DELIMITER_PAIRS = 32;
 
-    private const array CREDENTIAL_TAIL_NOISE_KEYS = [
+    private const CREDENTIAL_TAIL_NOISE_KEYS = [
         'unknown' => true,
     ];
 

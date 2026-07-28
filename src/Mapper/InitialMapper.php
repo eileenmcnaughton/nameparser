@@ -13,9 +13,9 @@ use Iliaal\NameParser\Text;
  */
 class InitialMapper extends AbstractMapper
 {
-    public const int MAX_COMBINED = 64;
+    public const MAX_COMBINED = 64;
 
-    private const int MAX_COMBINED_EXPANSION_PARTS = Text::MAX_INPUT_TOKENS * 2;
+    private const MAX_COMBINED_EXPANSION_PARTS = Text::MAX_INPUT_TOKENS * 2;
 
     private ?bool $uniformUpperOverride = null;
 
