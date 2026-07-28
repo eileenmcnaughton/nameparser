@@ -92,6 +92,65 @@ class JointSalutationTest extends TestCase
     }
 
     /**
+     * the honorific splits into one entry per person addressed, so a caller with
+     * a single prefix field per contact can take the first and derive the
+     * partner from the second
+     *
+     * @param  list<string>  $expected
+     */
+    #[DataProvider('salutationsProvider')]
+    public function testGetSalutationsSplitsPerPerson(string $input, array $expected): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($expected, $name->getSalutations(), "getSalutations for '$input'");
+
+        // the entries recompose into the rendered honorific
+        $this->assertSame($name->getSalutation(), implode(' and ', $expected), "recomposition for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, list<string>}>
+     */
+    public static function salutationsProvider(): array
+    {
+        return [
+            'and spelled out'  => ['Mr. and Mrs. Brad Smith', ['Mr.', 'Mrs.']],
+            'ampersand'        => ['Mr. & Mrs. Brad Smith', ['Mr.', 'Mrs.']],
+            'no periods'       => ['Mr and Mrs Brad Smith', ['Mr.', 'Mrs.']],
+            'uppercase input'  => ['MR. AND MRS. BRAD SMITH', ['Mr.', 'Mrs.']],
+            'two doctors'      => ['Dr. & Dr. Chen', ['Dr.', 'Dr.']],
+            'mixed titles'     => ['Dr. and Mrs. Brad Smith', ['Dr.', 'Mrs.']],
+            'comma form'       => ['Mr. and Mrs. Smith, Brad', ['Mr.', 'Mrs.']],
+            'surname only'     => ['Mr. and Mrs. Smith', ['Mr.', 'Mrs.']],
+
+            // stacked titles address one person, so they stay in one entry
+            'stacked titles'   => ['Rev. Dr John Doe', ['Rev. Dr.']],
+            'stacked and joint' => ['Rev. Dr. and Mrs. John Doe', ['Rev. Dr.', 'Mrs.']],
+
+            'single title'     => ['Mr. Brad Smith', ['Mr.']],
+            // the leading article is not retained by the mapper
+            'article led'      => ['The Rev. Mark Williams', ['Rev.']],
+            'no honorific'     => ['Brad Smith', []],
+            'unabsorbed and'   => ['Mr. and Brad Smith', ['Mr.']],
+        ];
+    }
+
+    /**
+     * the shape the reported CiviCRM import needs: one prefix for the named
+     * contact, the partner assembled from the second title and the surname
+     */
+    public function testSalutationsDrivePerContactMapping(): void
+    {
+        $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
+        $salutations = $name->getSalutations();
+
+        $this->assertTrue($name->isJoint());
+        $this->assertSame('Mr.', $salutations[0]);
+        $this->assertSame('Mrs. Smith', $salutations[1] . ' ' . $name->getLastname());
+    }
+
+    /**
      * @return array<string, array{string, bool}>
      */
     public static function jointProvider(): array

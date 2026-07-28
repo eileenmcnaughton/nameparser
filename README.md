@@ -90,7 +90,7 @@ $name->getFullName();     // "Jane A. Doe"
 
 Beyond the example above, `Name` also exposes `getMiddlename()`, `getNickname()`,
 `getLastnamePrefix()`, `getGivenName()`, `getAll()`, `toArray()`,
-`getConfidence()`, and `getSource()`. `getLastname(true)` returns the surname
+`getSalutations()`, `isJoint()`, `getConfidence()`, and `getSource()`. `getLastname(true)` returns the surname
 without any particle prefix; the default `getLastname()` already includes
 prefixes.
 
@@ -112,6 +112,38 @@ $parser->parse('Dr. Jane A. Doe DDS')->toArray();
 
 Note that `lastname` already includes any particle prefix (`de la Torre`);
 `lastname_prefix` is a convenience extract, not a component to prepend.
+
+### Joint names
+
+An honorific can cover two people. The parser still returns one `Name`, and the
+given and family name belong to the person actually named, so `isJoint()` tells
+you when the row implies a second contact:
+
+```php
+$name = $parser->parse('Mr. and Mrs. Brad Smith');
+
+$name->isJoint();         // true
+$name->getSalutation();   // "Mr. and Mrs."
+$name->getSalutations();  // ['Mr.', 'Mrs.']
+$name->getFirstname();    // "Brad"
+$name->getLastname();     // "Smith"
+```
+
+`getSalutation()` renders the honorific the input carried. `getSalutations()`
+splits it one entry per person, for a contact record that holds a single prefix:
+
+```php
+$prefix  = $name->getSalutations()[0] ?? '';                              // "Mr."
+$partner = $name->getSalutations()[1] . ' ' . $name->getLastname();       // "Mrs. Smith"
+```
+
+The partner shares the surname, not the given name. Stacked titles address one
+person and stay in one entry (`Rev. Dr John Doe` gives `['Rev. Dr.']`), and a
+name with no honorific gives an empty list. `Mr. & Mrs.` normalizes to the same
+value as `Mr. and Mrs.`.
+
+Only the title-anchored form is detected. A bare `Brad and Jane Smith` has no
+honorific for the connector to attach to and reports `isJoint() === false`.
 
 ### Confidence / ambiguity
 

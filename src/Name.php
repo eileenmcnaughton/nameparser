@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
 
 class Name
@@ -245,6 +246,50 @@ class Name
     public function getSalutation(): string
     {
         return $this->export('Salutation');
+    }
+
+    /**
+     * the honorific split into one entry per person addressed, for callers with
+     * a single prefix field per contact: "Mr. and Mrs. Brad Smith" gives
+     * ['Mr.', 'Mrs.']. Stacked titles for one person stay together
+     * ("Rev. Dr John Doe" gives ['Rev. Dr.']), and a name with no honorific
+     * gives an empty list, so [0] can be indexed without checking isJoint()
+     * first. Joining the entries with " and " reproduces getSalutation().
+     *
+     * @return list<string>
+     */
+    public function getSalutations(): array
+    {
+        $groups = [];
+        $current = [];
+
+        foreach ($this->parts as $part) {
+            if (!$part instanceof Salutation) {
+                continue;
+            }
+
+            if ($part instanceof SalutationConnector) {
+                if ($current !== []) {
+                    $groups[] = implode(' ', $current);
+                    $current = [];
+                }
+
+                continue;
+            }
+
+            $normalized = $part->normalize();
+            // skip empties for the same reason export() does: a blank token
+            // must not become a stray space inside a group
+            if ($normalized !== '') {
+                $current[] = $normalized;
+            }
+        }
+
+        if ($current !== []) {
+            $groups[] = implode(' ', $current);
+        }
+
+        return $groups;
     }
 
     /**
