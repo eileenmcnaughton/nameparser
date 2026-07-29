@@ -243,4 +243,46 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('', $name->getSalutation());
         $this->assertSame('', $name->getFirstname());
     }
+
+    public function testSingleSegmentSalutationOutranksCredentialCollision(): void
+    {
+        $name = (new Parser())->parse('MS Smith');
+
+        $this->assertSame('Ms.', $name->getSalutation());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function commaCredentialNoiseProvider(): array
+    {
+        return [
+            'punctuation after anchor' => ['Smith, Jane, MD, -'],
+            'punctuation before anchor' => ['Smith, Jane, -, MD'],
+            'placeholder after anchor' => ['Smith, Jane, MD, Unknown'],
+            'placeholder before anchor' => ['Smith, Jane, Unknown, MD'],
+        ];
+    }
+
+    #[DataProvider('commaCredentialNoiseProvider')]
+    public function testCommaCredentialTailDropsNoiseAroundAnchor(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('Jane', $name->getFirstname());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
+    }
+
+    public function testCommaTailNoiseWithoutCredentialAnchorIsPreserved(): void
+    {
+        $name = (new Parser())->parse('Smith, Jane, -');
+
+        $this->assertSame('Jane', $name->getFirstname());
+        $this->assertSame('-', $name->getMiddlename());
+        $this->assertSame('', $name->getSuffix());
+    }
 }

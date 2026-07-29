@@ -28,4 +28,12 @@ class NormalisationTest extends TestCase
         $part = new Lastname('nguyễn');
         $this->assertEquals('Nguyễn', $part->normalize());
     }
+
+    public function testCamelcasingTreatsDecomposedAccentAsOneWord(): void
+    {
+        $decomposed = "Rene\u{0301}e";
+
+        $this->assertSame($decomposed, (new Firstname($decomposed))->normalize());
+        $this->assertSame($decomposed, (new Firstname("rene\u{0301}e"))->normalize());
+    }
 }

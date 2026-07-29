@@ -17,14 +17,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `Confidence::assess()` flags a two-token input led by an honorific that is also a real name (`Lord Ashcroft`, `Pastor Gonzalez`, `Hon Chan`), where the title reading leaves no given name and nothing in the input decides between the two. A comma resolves it structurally (`Lord, Jack`) and a third token leaves a given name either way (`Lady Diana Spencer`), so neither is flagged.
+- `parse()` now rejects inputs over 1,048,576 bytes or 65,536 non-empty tokens with `LengthException` before structural allocation.
 - `setMaxCombinedInitials()` now accepts only 0 through 64, preventing hostile configuration from expanding one token into an unbounded part list. Nickname delimiter configuration is similarly bounded to 32 pairs of at most 64 bytes each.
 - Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
 - Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
 - A pure all-caps unknown-candidate segment with no prior dictionary anchor is kept as a name rather than promoted to a suffix when a later credential appears (`Smith, JOHN, MD` → first `John`, suffix `MD`). Unknown candidates still ride after a known credential (`MD, FACS`) and peel from a mixed segment onto a later dictionary segment (`John FACS, MD`). Prefer `Smith, MD, FACS` when the unknown stands alone before the known credential.
-- `getConfidence()` only considers collisions present in the parser's configured suffix dictionaries (standalone `Confidence::assess($string)` without a second argument still uses the full ambiguous-key table).
+- `getConfidence()` now uses the parser's configured suffixes, salutations, and token boundaries. Standalone `Confidence::assess($string)` retains English defaults.
 
 ### Fixed
 
+- Decomposed Unicode accents stay attached to their base letter during casing, initial splitting, and short-surname detection.
+- Credentials before a trailing nickname are retained in both Western and comma forms.
+- German-only and other custom language dictionaries no longer throw when an English ambiguous suffix key is absent.
+- Comma-separated credential tails now drop punctuation and `Unknown` placeholders under the same rules as space-separated tails.
+- Nickname delimiters ignored by the 32-pair and 64-byte limits no longer shield structural commas.
+- Every stock mapper now accepts sparse integer-keyed input under its public array contract.
+- Custom `SuffixMapper` subclasses can override the protected uppercase check for ambiguous credentials again.
 - Canonical mixed-case credentials such as `LAc` and `L.Ac.` are recognized without making the title-case name `Lac` ambiguous.
 - Comma parsing once again dispatches through the protected `parseSplitName()` extension hook.
 - Caller-owned mapper objects retain their dictionaries and state after parser configuration changes, and sparse custom mapper output is normalized before the next mapper runs.

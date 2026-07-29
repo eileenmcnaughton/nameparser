@@ -28,6 +28,8 @@ class MiddlenameMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
+
         // If we don't expect a lastname, match a mimimum of 2 parts
         $minumumParts = ($this->mapWithoutLastname ? 2 : 3);
 

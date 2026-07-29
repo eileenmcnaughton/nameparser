@@ -54,6 +54,7 @@ class InitialMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
         $last = count($parts) - 1;
 
         // Splitting an all-uppercase token into separate initials ("JM" -> J M)
@@ -81,7 +82,7 @@ class InitialMapper extends AbstractMapper
 
             if ($splitCombined && mb_strtoupper($part, 'UTF-8') === $part) {
                 $stripped = str_replace('.', '', $part);
-                $length = mb_strlen($stripped, 'UTF-8');
+                $length = Text::graphemeLength($stripped);
 
                 // caseless scripts (CJK, Hebrew) are trivially "uppercase", so the
                 // gate above passes for a 2-char given name like "李明". Only split
@@ -92,7 +93,7 @@ class InitialMapper extends AbstractMapper
                     && $length <= $this->combinedMax
                     && $stripped !== mb_strtolower($stripped, 'UTF-8')
                 ) {
-                    foreach (mb_str_split($stripped, 1, 'UTF-8') as $initial) {
+                    foreach (Text::graphemes($stripped) as $initial) {
                         $mapped[] = $this->isInitial($initial) ? new Initial($initial) : $initial;
                     }
 
@@ -108,14 +109,14 @@ class InitialMapper extends AbstractMapper
 
     protected function isInitial(string $part): bool
     {
-        $length = mb_strlen($part, 'UTF-8');
-
         // a caseless single character ("李") is a whole name, not an initial; an
         // initial is a genuinely cased letter ("É", "J"). Casing is the signal.
-        if ($length === 1) {
+        if (Text::graphemeLength($part) === 1) {
             return Text::isCased($part);
         }
 
-        return $length === 2 && str_ends_with($part, '.') && Text::isCased($part);
+        return str_ends_with($part, '.')
+            && Text::graphemeLength(substr($part, 0, -1)) === 1
+            && Text::isCased($part);
     }
 }

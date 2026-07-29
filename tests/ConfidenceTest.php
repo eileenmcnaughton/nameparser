@@ -122,4 +122,15 @@ class ConfidenceTest extends TestCase
             $result['notes'],
         );
     }
+
+    public function testStandaloneAssessmentKeepsDefaultEnglishSalutationScope(): void
+    {
+        $result = Confidence::assess('Lord Ashcroft');
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(
+            ["'Lord' could be a name or a salutation; nothing in the input decides it"],
+            $result['notes'],
+        );
+    }
 }

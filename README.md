@@ -174,7 +174,7 @@ use Iliaal\NameParser\Confidence;
 $result = Confidence::assess('NGUYEN, VI');
 // ['ambiguous' => true, 'notes' => ["'VI' could be a name or a credential; input casing is uniform"]]
 
-// or read it off the parse; uses the same input and the parser's suffix dictionaries
+// or read it off the parse; uses the parser's tokens and dictionaries
 $result = $parser->parse('NGUYEN, VI')->getConfidence();
 
 if ($result['ambiguous']) {
@@ -187,9 +187,13 @@ an advisory pass you opt into. A mixed-case input like `"Nguyen, Vi"` stays
 unflagged; the title-case `Vi` resolves to the given name.
 
 For a non-default language set, standalone `Confidence::assess($string)` still
-uses the full English ambiguous-key table. To match a custom parser, either call
-`Name::getConfidence()` after `parse()`, or pass `$parser->getSuffixes()` as the
-second argument to `assess()`.
+uses the English salutation scope and the full ambiguous-suffix table.
+`Name::getConfidence()` uses the parser's configured suffixes, salutations, and
+token boundaries. This includes custom whitespace rules. Prefer that method
+when you need confidence for an actual parse. Standalone callers can scope the
+dictionaries with `Confidence::assess($string, $parser->getSuffixes(),
+$parser->getSalutations())`; standalone tokenization still splits on whitespace
+and commas.
 
 > **All-caps limitation.** Disambiguation keys off casing, so uniform-case input
 > (all-caps legacy and registry data, or all-lowercase) carries no signal: an
@@ -238,6 +242,11 @@ Fluent setters on `Parser`:
   to restore the default pipeline.
 
 ### Parsing limits
+
+`parse()` accepts at most 1,048,576 input bytes and 65,536 non-empty tokens.
+It throws `LengthException` before comma segmentation or mapper allocation when
+either limit is exceeded. These bounds keep malformed import rows from
+exhausting a PHP worker while retaining batch-scale inputs.
 
 Some inputs have no structural signal. A comma followed only by credentials can
 mean full name plus credentials (`Jane Doe, MD`) or surname plus credentials

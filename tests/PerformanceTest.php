@@ -11,6 +11,10 @@ class PerformanceTest extends TestCase
 
     private const float MAX_SCALING_RATIO = 3.0;
 
+    private const int MAX_INPUT_BYTES = 1024 * 1024;
+
+    private const int MAX_INPUT_TOKENS = 65536;
+
     public function testCombinedInitialExpansionRemainsLinearAtBatchScale(): void
     {
         $this->assertLinearScaling(
@@ -51,6 +55,20 @@ class PerformanceTest extends TestCase
         (new Parser())->parse($input);
 
         $this->assertLessThan(64 * 1024 * 1024, memory_get_peak_usage(true) - $baseline);
+    }
+
+    public function testRejectsInputOverByteBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        (new Parser())->parse(str_repeat('A', self::MAX_INPUT_BYTES + 1));
+    }
+
+    public function testRejectsInputOverTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        (new Parser())->parse(str_repeat('A ', self::MAX_INPUT_TOKENS) . 'A');
     }
 
     /**

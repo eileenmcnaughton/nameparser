@@ -68,4 +68,20 @@ class NameConfidenceTest extends TestCase
         $this->assertSame('Mba', $name->getLastname());
         $this->assertFalse($name->getConfidence()['ambiguous']);
     }
+
+    public function testParsedConfidenceUsesConfiguredWhitespace(): void
+    {
+        $name = (new Parser())
+            ->setWhitespace('')
+            ->parse("ANH\tTRAN\tDO");
+
+        $this->assertFalse($name->getConfidence()['ambiguous']);
+    }
+
+    public function testParsedConfidenceUsesConfiguredSalutations(): void
+    {
+        $name = (new Parser([new German()]))->parse('Lord Ashcroft');
+
+        $this->assertFalse($name->getConfidence()['ambiguous']);
+    }
 }

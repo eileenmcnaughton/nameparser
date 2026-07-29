@@ -22,5 +22,16 @@ abstract class AbstractMapperTestCase extends TestCase
         $this->assertEquals($expectation, $mapper->map($input));
     }
 
+    public function testMapAcceptsSparseIntegerKeys(): void
+    {
+        $dense = ['John', 'Smith'];
+        $sparse = [5 => 'John', 9 => 'Smith'];
+
+        $this->assertEquals(
+            $this->getMapper()->map($dense),
+            $this->getMapper()->map($sparse),
+        );
+    }
+
     abstract protected function getMapper(): AbstractMapper;
 }

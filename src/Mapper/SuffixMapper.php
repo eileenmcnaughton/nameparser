@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Suffix;
 use Iliaal\NameParser\Text;
 
@@ -55,10 +56,6 @@ class SuffixMapper extends AbstractMapper
         'ii' => true, 'iii' => true, 'iv' => true, 'mba' => true,
     ];
 
-    private const array TAIL_NOISE_KEYS = [
-        'unknown' => true,
-    ];
-
     /**
      * @param  array<int|string, string>  $suffixes
      */
@@ -94,6 +91,8 @@ class SuffixMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
+
         if ($this->isMatchingSinglePart($parts)) {
             $first = $parts[0];
             if (is_string($first)) {
@@ -132,6 +131,10 @@ class SuffixMapper extends AbstractMapper
             }
 
             $part = $parts[$k];
+
+            if ($part instanceof Nickname) {
+                continue;
+            }
 
             if (! is_string($part)) {
                 break;
@@ -253,13 +256,6 @@ class SuffixMapper extends AbstractMapper
         }
 
         if (count($parts) !== 1 || ! is_string($parts[0])) {
-            return false;
-        }
-
-        // terminal-token guard: a lone token that collides with a name is kept
-        // as a name unless its casing reads as a credential (all-caps "DO"),
-        // so "Smith, Do" keeps the given name but "Brown, DO" strips the cred.
-        if ($this->isAmbiguous($parts[0]) && ! $this->matchesCredentialCase($parts[0])) {
             return false;
         }
 
@@ -389,11 +385,7 @@ class SuffixMapper extends AbstractMapper
 
     private function isTailNoise(string $part): bool
     {
-        if (isset(self::TAIL_NOISE_KEYS[$this->getKey($part)])) {
-            return true;
-        }
-
-        return preg_match('/[\p{L}\p{N}]/u', $part) !== 1;
+        return Text::isCredentialTailNoise($part);
     }
 
     /**
@@ -409,7 +401,7 @@ class SuffixMapper extends AbstractMapper
 
         $letters = Text::letters($previous);
 
-        return mb_strlen($letters, 'UTF-8') === 1;
+        return Text::graphemeLength($letters) === 1;
     }
 
     protected function isUpperCase(string $part): bool
@@ -419,9 +411,7 @@ class SuffixMapper extends AbstractMapper
 
     private function matchesCredentialCase(string $part): bool
     {
-        return Text::matchesCredentialCase(
-            $part,
-            $this->suffixes[$this->getKey($part)],
-        );
+        return $this->isUpperCase($part)
+            || Text::letters($part) === Text::letters($this->suffixes[$this->getKey($part)]);
     }
 }

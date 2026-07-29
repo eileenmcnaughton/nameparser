@@ -8,6 +8,7 @@ use Iliaal\NameParser\Part\LastnamePrefix;
 use Iliaal\NameParser\Part\Nickname;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\Suffix;
+use Iliaal\NameParser\Text;
 
 /**
  * @phpstan-import-type PartArray from AbstractMapper
@@ -30,6 +31,8 @@ class LastnameMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
+
         if (! $this->matchSinglePart && count($parts) < 2) {
             return $parts;
         }
@@ -170,7 +173,7 @@ class LastnameMapper extends AbstractMapper
             return false;
         }
 
-        $length = mb_strlen($lastPart->getValue(), 'UTF-8');
+        $length = Text::graphemeLength($lastPart->getValue());
 
         return $length === 1 || $length >= 3;
     }

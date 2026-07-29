@@ -19,6 +19,15 @@ abstract class AbstractMapper
     abstract public function map(array $parts): array;
 
     /**
+     * @param  PartArray  $parts
+     * @return PartArray
+     */
+    protected function normalizeParts(array $parts): array
+    {
+        return array_is_list($parts) ? $parts : array_values($parts);
+    }
+
+    /**
      * checks if there are still unmapped parts left before the given position
      *
      * @param  PartArray  $parts

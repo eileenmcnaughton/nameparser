@@ -20,6 +20,8 @@ class FirstnameMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
+
         // an earlier mapper can empty the array (e.g. NicknameMapper drops a lone
         // unmatched delimiter token); nothing to map then, and indexing [0] would
         // hand a null to handleSinglePart()

@@ -11,6 +11,14 @@ namespace Iliaal\NameParser;
  */
 final class Text
 {
+    private const int MAX_NICKNAME_DELIMITER_BYTES = 64;
+
+    private const int MAX_NICKNAME_DELIMITER_PAIRS = 32;
+
+    private const array CREDENTIAL_TAIL_NOISE_KEYS = [
+        'unknown' => true,
+    ];
+
     /**
      * @var array<string, string>
      */
@@ -55,7 +63,62 @@ final class Text
      */
     public static function letters(string $word): string
     {
-        return preg_replace('/[^\p{L}]/u', '', $word) ?? '';
+        return preg_replace('/[^\p{L}\p{M}]/u', '', $word) ?? '';
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function graphemes(string $word): array
+    {
+        if ($word === '') {
+            return [];
+        }
+
+        $matches = [];
+
+        if (preg_match_all('/\X/u', $word, $matches) === false) {
+            return str_split($word);
+        }
+
+        return $matches[0];
+    }
+
+    public static function graphemeLength(string $word): int
+    {
+        return count(self::graphemes($word));
+    }
+
+    /**
+     * @param  array<string, string>  $delimiters
+     * @return array<string, string>
+     */
+    public static function sanitizeNicknameDelimiters(array $delimiters): array
+    {
+        return array_slice(
+            array_filter(
+                $delimiters,
+                static fn(string $close, string $open): bool => $open !== ''
+                    && $close !== ''
+                    && strlen($open) <= self::MAX_NICKNAME_DELIMITER_BYTES
+                    && strlen($close) <= self::MAX_NICKNAME_DELIMITER_BYTES
+                    && mb_check_encoding($open, 'UTF-8')
+                    && mb_check_encoding($close, 'UTF-8'),
+                ARRAY_FILTER_USE_BOTH,
+            ),
+            0,
+            self::MAX_NICKNAME_DELIMITER_PAIRS,
+            true,
+        );
+    }
+
+    public static function isCredentialTailNoise(string $token): bool
+    {
+        if (isset(self::CREDENTIAL_TAIL_NOISE_KEYS[self::key($token)])) {
+            return true;
+        }
+
+        return preg_match('/[\p{L}\p{N}]/u', $token) !== 1;
     }
 
     /**
@@ -128,6 +191,6 @@ final class Text
             return false;
         }
 
-        return mb_strlen(self::letters($token), 'UTF-8') >= 2;
+        return self::graphemeLength(self::letters($token)) >= 2;
     }
 }

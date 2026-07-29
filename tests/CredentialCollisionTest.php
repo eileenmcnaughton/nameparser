@@ -286,4 +286,28 @@ class CredentialCollisionTest extends TestCase
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Smith', $name->getLastname());
     }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function credentialBeforeNicknameProvider(): array
+    {
+        return [
+            'space form' => ['Jane Doe MD (Jenny)'],
+            'comma form' => ['Doe, Jane MD (Jenny)'],
+        ];
+    }
+
+    #[DataProvider('credentialBeforeNicknameProvider')]
+    public function testCredentialBeforeNicknameKeepsBothDecorations(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('Jane', $name->getFirstname());
+        $this->assertSame('', $name->getInitials());
+        $this->assertSame('', $name->getMiddlename());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
+        $this->assertSame('Jenny', $name->getNickname());
+    }
 }

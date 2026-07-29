@@ -20,6 +20,10 @@ class Parser
 {
     private const string COMMA_PLACEHOLDER = "\x00";
 
+    private const int MAX_INPUT_BYTES = 1024 * 1024;
+
+    private const int MAX_INPUT_TOKENS = 65536;
+
     protected string $whitespace = " \r\n\t";
 
     /**
@@ -102,7 +106,10 @@ class Parser
      */
     private ?InitialMapper $secondSegmentInitialMapper = null;
 
-    private ?SuffixMapper $secondSegmentSuffixMapper = null;
+    /**
+     * @var list<SuffixMapper>
+     */
+    private array $secondSegmentSuffixMappers = [];
 
     /**
      * @param  array<int, LanguageInterface>  $languages
@@ -133,7 +140,9 @@ class Parser
             }
         }
 
+        $this->assertInputByteBudget($name);
         $name = $this->normalize($name);
+        $this->assertInputTokenBudget($name);
 
         // split on commas that are not shielded inside a nickname span, so
         // "John (Bob, Jr) Doe" is not bisected at the nickname's comma and a
@@ -145,23 +154,23 @@ class Parser
                 $segments[0],
                 implode(',', array_slice($segments, 1)),
             )
-                ->setSource($name);
+                ->setSource($name, $this->tokenizeSegments($segments));
         }
 
-        if ($this->surnameFirst) {
-            $tokens = $this->tokenizeWords($name);
+        $tokens = $this->tokenizeWords($name);
 
+        if ($this->surnameFirst) {
             // a leading salutation ("Dr. Kim Jong Un") is not the surname:
             // peel it off and re-attach it to the surname segment where
             // SalutationMapper classifies it, so the first real token
             // becomes the surname rather than being shifted away
             if (count($tokens) > 1 && ($taken = $this->takeSurnameFirst($tokens)) !== null) {
                 return $this->parseSplitName($taken[0], implode(' ', $taken[1]))
-                    ->setSource($name);
+                    ->setSource($name, $tokens);
             }
         }
 
-        return $this->parseParts($this->tokenizeWords($name))->setSource($name);
+        return $this->parseParts($tokens)->setSource($name, $tokens);
     }
 
     /**
@@ -215,13 +224,17 @@ class Parser
     {
         $secondSegment = $this->getSecondSegmentParser();
         $this->secondSegmentInitialMapper?->setUniformUpperOverride($uniformUpper);
-        $this->secondSegmentSuffixMapper?->setUniformUpperOverride($uniformUpper);
+        foreach ($this->secondSegmentSuffixMappers as $mapper) {
+            $mapper->setUniformUpperOverride($uniformUpper);
+        }
 
         try {
             $givenName = $secondSegment->parseParts($givenParts);
         } finally {
             $this->secondSegmentInitialMapper?->setUniformUpperOverride(null);
-            $this->secondSegmentSuffixMapper?->setUniformUpperOverride(null);
+            foreach ($this->secondSegmentSuffixMappers as $mapper) {
+                $mapper->setUniformUpperOverride(null);
+            }
         }
 
         if ($this->surnameFirst && ! $this->hasGivenNameParts($givenName)) {
@@ -325,6 +338,7 @@ class Parser
         /** @var list<list<string>> $pendingCandidates trailing class-2 peels from mixed segments */
         $pendingCandidates = [];
         $runAnchored = false;
+        $hasCredentialAnchor = false;
 
         foreach ($tailSegments as $segment) {
             $trimmed = trim($segment);
@@ -347,6 +361,10 @@ class Parser
                 }
 
                 $classes[] = [$token, $class];
+            }
+
+            if ($hasDictionarySuffix) {
+                $hasCredentialAnchor = true;
             }
 
             if (! $this->isCredentialOnlySegment($classes)) {
@@ -415,6 +433,14 @@ class Parser
         // trailing peels with no dictionary segment after them stay names
         $this->appendCandidateSegments($parts, $pendingCandidates, false);
 
+        if ($hasCredentialAnchor) {
+            $parts = array_values(array_filter(
+                $parts,
+                static fn(\Iliaal\NameParser\Part\AbstractPart|string $part): bool => ! is_string($part)
+                    || ! Text::isCredentialTailNoise($part),
+            ));
+        }
+
         return $parts;
     }
 
@@ -471,6 +497,23 @@ class Parser
     }
 
     /**
+     * @param  list<string>  $segments
+     * @return list<string>
+     */
+    private function tokenizeSegments(array $segments): array
+    {
+        $tokens = [];
+
+        foreach ($segments as $segment) {
+            foreach ($this->tokenizeWords(trim($segment)) as $token) {
+                $tokens[] = $token;
+            }
+        }
+
+        return $tokens;
+    }
+
+    /**
      * @param  array<int, \Iliaal\NameParser\Part\AbstractPart|string>  $parts
      * @param  list<list<string>>  $segments
      */
@@ -490,7 +533,7 @@ class Parser
     private function mapCommaSegmentSuffixes(array $tokens, bool $uniformUpper): array
     {
         $this->getSecondSegmentParser();
-        $mapper = $this->secondSegmentSuffixMapper;
+        $mapper = $this->secondSegmentSuffixMappers[0] ?? null;
 
         if ($mapper === null) {
             return $tokens;
@@ -620,15 +663,22 @@ class Parser
      */
     private function makeName(array $parts): Name
     {
-        return new Name($parts, $this->getSuffixes());
+        return new Name($parts, $this->getSuffixes(), $this->getSalutations());
     }
 
     protected function getFirstSegmentParser(): Parser
     {
         return $this->firstSegmentParser ??= $this->newSegmentParser()->setMappers([
-            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
+            new SalutationMapper(
+                $this->getSalutations(),
+                $this->getMaxSalutationIndex(),
+                false,
+                $this->getSuffixes(),
+                $this->getNicknameDelimiters(),
+            ),
             new SuffixMapper($this->getSuffixes(), false, 2),
             new NicknameMapper($this->getNicknameDelimiters()),
+            new SuffixMapper($this->getSuffixes(), false, 2),
             new InitialMapper($this->getMaxCombinedInitials()),
             new LastnameMapper($this->getPrefixes(), true),
             new FirstnameMapper(),
@@ -644,7 +694,14 @@ class Parser
         return $this->surnameSegmentParser ??= $this->newSegmentParser()->setMappers([
             new SuffixMapper($this->getSuffixes(), false, 1),
             new NicknameMapper($this->getNicknameDelimiters()),
-            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex(), true),
+            new SalutationMapper(
+                $this->getSalutations(),
+                $this->getMaxSalutationIndex(),
+                true,
+                $this->getSuffixes(),
+                $this->getNicknameDelimiters(),
+            ),
+            new SuffixMapper($this->getSuffixes(), false, 1),
             new LastnameMapper($this->getPrefixes(), true, true),
         ]);
     }
@@ -653,11 +710,21 @@ class Parser
     {
         if ($this->secondSegmentParser === null) {
             $this->secondSegmentInitialMapper = new InitialMapper($this->getMaxCombinedInitials(), true);
-            $this->secondSegmentSuffixMapper = new SuffixMapper($this->getSuffixes(), true, 0);
+            $this->secondSegmentSuffixMappers = [
+                new SuffixMapper($this->getSuffixes(), true, 0),
+                new SuffixMapper($this->getSuffixes(), true, 0),
+            ];
             $this->secondSegmentParser = $this->newSegmentParser()->setMappers([
-                $this->secondSegmentSuffixMapper,
+                $this->secondSegmentSuffixMappers[0],
                 new NicknameMapper($this->getNicknameDelimiters()),
-                new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex(), true),
+                new SalutationMapper(
+                    $this->getSalutations(),
+                    $this->getMaxSalutationIndex(),
+                    true,
+                    $this->getSuffixes(),
+                    $this->getNicknameDelimiters(),
+                ),
+                $this->secondSegmentSuffixMappers[1],
                 $this->secondSegmentInitialMapper,
                 new FirstnameMapper(),
                 new MiddlenameMapper(true, $this->getPrefixes()),
@@ -688,9 +755,16 @@ class Parser
     {
         if (! $this->customMappers && empty($this->mappers)) {
             $this->mappers = [
-                new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
+                new SalutationMapper(
+                    $this->getSalutations(),
+                    $this->getMaxSalutationIndex(),
+                    false,
+                    $this->getSuffixes(),
+                    $this->getNicknameDelimiters(),
+                ),
                 new SuffixMapper($this->getSuffixes()),
                 new NicknameMapper($this->getNicknameDelimiters()),
+                new SuffixMapper($this->getSuffixes()),
                 new InitialMapper($this->getMaxCombinedInitials()),
                 new LastnameMapper($this->getPrefixes()),
                 new FirstnameMapper(),
@@ -761,7 +835,7 @@ class Parser
         $this->surnameSegmentParser = null;
         $this->secondSegmentParser = null;
         $this->secondSegmentInitialMapper = null;
-        $this->secondSegmentSuffixMapper = null;
+        $this->secondSegmentSuffixMappers = [];
     }
 
     /**
@@ -780,6 +854,9 @@ class Parser
                 $this->mappers[$i] = new SalutationMapper(
                     $this->getSalutations(),
                     $this->maxSalutationIndex,
+                    false,
+                    $this->getSuffixes(),
+                    $this->getNicknameDelimiters(),
                 );
             } elseif ($mapper instanceof NicknameMapper) {
                 $this->mappers[$i] = new NicknameMapper($this->getNicknameDelimiters());
@@ -887,7 +964,7 @@ class Parser
             return $name;
         }
 
-        $delimiters = $this->getNicknameDelimiters();
+        $delimiters = Text::sanitizeNicknameDelimiters($this->getNicknameDelimiters());
 
         $pairs = [];
         /** @var array<string, true> $symmetric */
@@ -1046,6 +1123,47 @@ class Parser
         return true;
     }
 
+    private function assertInputByteBudget(string $name): void
+    {
+        if (strlen($name) > self::MAX_INPUT_BYTES) {
+            throw new \LengthException(
+                'Name input exceeds the ' . self::MAX_INPUT_BYTES . '-byte limit.',
+            );
+        }
+    }
+
+    private function assertInputTokenBudget(string $name): void
+    {
+        if ($name === '' || substr_count($name, ' ') < self::MAX_INPUT_TOKENS) {
+            return;
+        }
+
+        $tokens = 0;
+        $insideToken = false;
+        $length = strlen($name);
+
+        for ($i = 0; $i < $length; $i++) {
+            if ($name[$i] === ' ') {
+                $insideToken = false;
+
+                continue;
+            }
+
+            if ($insideToken) {
+                continue;
+            }
+
+            $insideToken = true;
+            $tokens++;
+
+            if ($tokens > self::MAX_INPUT_TOKENS) {
+                throw new \LengthException(
+                    'Name input exceeds the ' . self::MAX_INPUT_TOKENS . '-token limit.',
+                );
+            }
+        }
+    }
+
     /**
      * peel leading salutations and take the next token as the surname. Returns
      * null when fewer than two name tokens remain after peeling.
@@ -1098,7 +1216,11 @@ class Parser
      */
     private function peelLeadingSalutations(array &$tokens): array
     {
-        $mapped = (new SalutationMapper($this->getSalutations()))->map($tokens);
+        $mapped = (new SalutationMapper(
+            $this->getSalutations(),
+            suffixes: $this->getSuffixes(),
+            nicknameDelimiters: $this->getNicknameDelimiters(),
+        ))->map($tokens);
         $offset = 0;
         $peeled = [];
         $sawSalutation = false;

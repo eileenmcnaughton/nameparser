@@ -111,4 +111,28 @@ class GermanParserTest extends TestCase
         // MD is not in the German dictionary, so it stays in the name stream
         $this->assertStringContainsStringIgnoringCase('md', $name->getLastname() . $name->getMiddlename());
     }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function absentAmbiguousSuffixProvider(): array
+    {
+        return [
+            'Vi' => ['Vi'],
+            'Do' => ['Do'],
+            'Rn' => ['Rn'],
+            'Mba' => ['Mba'],
+            'Vii' => ['Vii'],
+        ];
+    }
+
+    #[DataProvider('absentAmbiguousSuffixProvider')]
+    public function testGermanOnlyCommaNameKeepsAbsentAmbiguousSuffixAsGivenName(string $given): void
+    {
+        $name = (new Parser([new German()]))->parse("Smith, {$given}");
+
+        $this->assertSame($given, $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getSuffix());
+    }
 }

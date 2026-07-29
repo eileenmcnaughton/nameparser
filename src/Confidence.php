@@ -18,15 +18,21 @@ class Confidence
      * configured dictionaries contribute to the result.
      *
      * @param  array<int|string, string>|null  $suffixes
+     * @param  array<int|string, string>|null  $salutations
+     * @param  list<string>|null  $tokens
      * @return array{ambiguous: bool, notes: list<string>}
      */
-    public static function assess(string $original, ?array $suffixes = null): array
-    {
+    public static function assess(
+        string $original,
+        ?array $suffixes = null,
+        ?array $salutations = null,
+        ?array $tokens = null,
+    ): array {
         if (! mb_check_encoding($original, 'UTF-8')) {
             return ['ambiguous' => true, 'notes' => ['input is not valid UTF-8']];
         }
 
-        $tokens = preg_split('/[\s,]+/u', trim($original), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $tokens ??= preg_split('/[\s,]+/u', trim($original), -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         // derive uniform-case from tokens (same shape as the parser), never from
         // a whole-string letters() strip on multi-megabyte hostile rows
@@ -91,7 +97,9 @@ class Confidence
         // token leaves a given name behind either way, so neither is flagged.
         $lead = $tokens[0] ?? '';
         if ($lead !== '' && count($tokens) === 2 && ! str_contains($original, ',')) {
-            if (isset(SalutationMapper::NAME_COLLIDING_KEYS[Text::key($lead)])) {
+            $key = Text::key($lead);
+            if (isset(SalutationMapper::NAME_COLLIDING_KEYS[$key])
+                && ($salutations === null || array_key_exists($key, $salutations))) {
                 $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
         }

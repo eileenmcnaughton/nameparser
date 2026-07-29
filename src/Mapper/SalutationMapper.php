@@ -55,11 +55,15 @@ class SalutationMapper extends AbstractMapper
      * @param  bool  $requireRemainder  refuse to consume the segment's last
      *                                  token, for segments the caller has
      *                                  already asserted to be a surname
+     * @param  array<int|string, string>  $suffixes
+     * @param  array<string, string>  $nicknameDelimiters
      */
     public function __construct(
         protected array $salutations,
         protected int $maxIndex = 0,
         protected bool $requireRemainder = false,
+        protected array $suffixes = [],
+        protected array $nicknameDelimiters = [],
     ) {
         foreach ($salutations as $key => $salutation) {
             if (str_contains((string) $key, ' ')) {
@@ -75,6 +79,8 @@ class SalutationMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
+
         $max = ($this->maxIndex > 0)
             ? min($this->maxIndex, count($parts))
             : max(1, count($parts) - 1);
@@ -200,9 +206,16 @@ class SalutationMapper extends AbstractMapper
      */
     private function hasNameRemainder(array $parts, int $start): bool
     {
-        for ($i = $start; $i < count($parts); $i++) {
-            $part = $parts[$i];
+        $remainder = array_slice($parts, $start);
 
+        if ($this->suffixes !== [] || $this->nicknameDelimiters !== []) {
+            $suffixMapper = new SuffixMapper($this->suffixes, true, 0);
+            $remainder = $suffixMapper->map($remainder);
+            $remainder = (new NicknameMapper($this->nicknameDelimiters))->map($remainder);
+            $remainder = $suffixMapper->map($remainder);
+        }
+
+        foreach ($remainder as $part) {
             if (is_string($part) && Text::letters($part) !== '') {
                 return true;
             }

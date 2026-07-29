@@ -31,6 +31,16 @@ class RobustnessTest extends TestCase
         $this->assertSame("\u{00C9}", $name->getLastname());
     }
 
+    public function testDecomposedShortLastnameDoesNotAbsorbMiddleName(): void
+    {
+        $lastname = "E\u{0301}";
+        $name = (new Parser())->parse('Mary Jo ' . $lastname);
+
+        $this->assertSame('Mary', $name->getFirstname());
+        $this->assertSame('Jo', $name->getMiddlename());
+        $this->assertSame($lastname, $name->getLastname());
+    }
+
     public function testCaselessScriptGivenNameIsNotSplitIntoInitials(): void
     {
         // Han and Hebrew are caseless, so the all-uppercase split gate must not
@@ -175,6 +185,34 @@ class RobustnessTest extends TestCase
 
         $this->assertSame('Smith', $name->getLastname());
         $this->assertSame('', $name->getNickname());
+    }
+
+    public function testOversizedNicknameDelimiterDoesNotShieldStructuralComma(): void
+    {
+        $opener = str_repeat('x', 65);
+        $input = "John {$opener}Nick, Jr>> Smith, MD";
+
+        $overLimit = (new Parser())->setNicknameDelimiters([$opener => '>>'])->parse($input);
+        $ignored = (new Parser())->setNicknameDelimiters(['nope' => '>>'])->parse($input);
+
+        $this->assertSame($ignored->toArray(), $overLimit->toArray());
+    }
+
+    public function testNicknameDelimiterBeyondPairLimitDoesNotShieldStructuralComma(): void
+    {
+        $delimiters = [];
+        for ($i = 0; $i < 32; $i++) {
+            $delimiters["q{$i}["] = "]{$i}";
+        }
+
+        $accepted = $delimiters;
+        $delimiters['target['] = ']';
+        $input = 'John target[Nick, Jr] Smith, MD';
+
+        $overLimit = (new Parser())->setNicknameDelimiters($delimiters)->parse($input);
+        $ignored = (new Parser())->setNicknameDelimiters($accepted)->parse($input);
+
+        $this->assertSame($ignored->toArray(), $overLimit->toArray());
     }
 
     public function testEmptyNicknameCloserIsIgnoredWithoutWarnings(): void

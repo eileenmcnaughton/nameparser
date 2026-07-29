@@ -169,7 +169,7 @@ class SalutationCollisionTest extends TestCase
     {
         $name = (new Parser())->parse($rendered . ' Alex Testsurname');
 
-        $this->assertNotSame('', $name->getSalutation(), "'$rendered' did not parse back as a salutation");
+        $this->assertSame($rendered, $name->getSalutation(), "'$rendered' did not round-trip");
         $this->assertSame('Testsurname', $name->getLastname(), "lastname after '$rendered'");
     }
 

@@ -4,16 +4,13 @@ namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Nickname;
+use Iliaal\NameParser\Text;
 
 /**
  * @phpstan-import-type PartArray from AbstractMapper
  */
 class NicknameMapper extends AbstractMapper
 {
-    private const int MAX_DELIMITER_BYTES = 64;
-
-    private const int MAX_DELIMITER_PAIRS = 32;
-
     private const int MAX_NESTING_DEPTH = 64;
 
     /**
@@ -60,21 +57,7 @@ class NicknameMapper extends AbstractMapper
         // the /u pattern fail compilation with a warning per token. Drop both
         // classes; if nothing valid remains the mapper no-ops (buildRegexp
         // returns '').
-        $this->delimiters = array_slice(
-            array_filter(
-                $this->delimiters,
-                static fn(string $close, string $open): bool => $open !== ''
-                    && $close !== ''
-                    && strlen($open) <= self::MAX_DELIMITER_BYTES
-                    && strlen($close) <= self::MAX_DELIMITER_BYTES
-                    && mb_check_encoding($open, 'UTF-8')
-                    && mb_check_encoding($close, 'UTF-8'),
-                ARRAY_FILTER_USE_BOTH
-            ),
-            0,
-            self::MAX_DELIMITER_PAIRS,
-            true,
-        );
+        $this->delimiters = Text::sanitizeNicknameDelimiters($this->delimiters);
 
         $this->regexp = $this->buildRegexp();
     }
@@ -86,6 +69,8 @@ class NicknameMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
+        $parts = $this->normalizeParts($parts);
+
         if ($this->regexp === '') {
             return $parts;
         }

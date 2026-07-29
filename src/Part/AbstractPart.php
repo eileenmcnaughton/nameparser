@@ -77,11 +77,12 @@ abstract class AbstractPart
         // quadratic to be irrelevant — no real name comes close to the bound —
         // and only when both letter cases are present (it cannot match
         // otherwise). Oversized tokens go straight to the title-casing path.
-        $isMixedCase = strlen($word) <= 1024
-            && $word !== mb_strtoupper($word, 'UTF-8')
-            && $word !== mb_strtolower($word, 'UTF-8');
+        $caseShape = preg_replace('/\p{M}/u', '', $word) ?? $word;
+        $isMixedCase = strlen($caseShape) <= 1024
+            && $caseShape !== mb_strtoupper($caseShape, 'UTF-8')
+            && $caseShape !== mb_strtolower($caseShape, 'UTF-8');
 
-        if ($isMixedCase && preg_match('/\p{L}(\p{Lu}*\p{Ll}\p{Ll}*\p{Lu}|\p{Ll}*\p{Lu}\p{Lu}*\p{Ll})\p{L}*/u', $word)) {
+        if ($isMixedCase && preg_match('/\p{L}(\p{Lu}*\p{Ll}\p{Ll}*\p{Lu}|\p{Ll}*\p{Lu}\p{Lu}*\p{Ll})\p{L}*/u', $caseShape)) {
             return $this->camelcaseCache = $word;
         }
 
@@ -91,7 +92,7 @@ abstract class AbstractPart
         }
 
         // preg_replace_callback returns null on regex error; fall back to the input.
-        return $this->camelcaseCache = preg_replace_callback('/[\p{L}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
+        return $this->camelcaseCache = preg_replace_callback('/[\p{L}\p{M}0-9]+/ui', $this->camelcaseReplace(...), $word) ?? $word;
     }
 
     /**

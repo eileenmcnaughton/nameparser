@@ -204,6 +204,8 @@ class JointSalutationTest extends TestCase
             'no honorific'       => ['Brad Smith', null, null],
             'unabsorbed and'     => ['Mr. and Brad Smith', null, null],
             'bare two givens'    => ['Brad and Jane Smith', null, null],
+            'credential-only remainder' => ['Mr. and Mrs. MD', null, null],
+            'nickname-only remainder' => ['Mr. and Mrs. (Bob)', null, null],
         ];
     }
 
@@ -275,6 +277,8 @@ class JointSalutationTest extends TestCase
             'unabsorbed and'    => ['Mr. and Brad Smith', false],
             // no honorific to anchor the connector, so this stays undetected
             'bare two givens'   => ['Brad and Jane Smith', false],
+            'credential-only remainder' => ['Mr. and Mrs. MD', false],
+            'nickname-only remainder' => ['Mr. and Mrs. (Bob)', false],
         ];
     }
 }

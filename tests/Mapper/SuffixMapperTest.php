@@ -162,4 +162,33 @@ class SuffixMapperTest extends AbstractMapperTestCase
 
         return new SuffixMapper($english->getSuffixes(), $matchSinglePart, $reservedParts);
     }
+
+    public function testAmbiguousCredentialDecisionUsesProtectedUppercaseHook(): void
+    {
+        $mapper = new class (['do' => 'Doctor of Osteopathy'], true, 0) extends SuffixMapper {
+            public bool $uppercaseChecked = false;
+
+            protected function isUpperCase(string $part): bool
+            {
+                $this->uppercaseChecked = true;
+
+                return false;
+            }
+        };
+
+        $this->assertSame(['DO'], $mapper->map(['DO']));
+        $this->assertTrue($mapper->uppercaseChecked);
+    }
+
+    public function testCanonicalMixedCaseCredentialDoesNotDependOnUppercaseHook(): void
+    {
+        $mapper = new class (['lac' => 'LAc'], true, 0) extends SuffixMapper {
+            protected function isUpperCase(string $part): bool
+            {
+                return false;
+            }
+        };
+
+        $this->assertEquals([new Suffix('LAc', 'LAc')], $mapper->map(['LAc']));
+    }
 }

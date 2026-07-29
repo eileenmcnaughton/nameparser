@@ -29,6 +29,16 @@ class Name
     protected ?array $confidenceSuffixes = null;
 
     /**
+     * @var array<int|string, string>|null
+     */
+    protected ?array $confidenceSalutations = null;
+
+    /**
+     * @var list<string>|null
+     */
+    protected ?array $confidenceTokens = null;
+
+    /**
      * constructor takes the array of parts this name consists of
      *
      * raw string parts are retained in getParts() but ignored by every getter
@@ -36,10 +46,15 @@ class Name
      *
      * @param  array<int, AbstractPart|string>|null  $parts
      * @param  array<int|string, string>|null  $confidenceSuffixes
+     * @param  array<int|string, string>|null  $confidenceSalutations
      */
-    public function __construct(?array $parts = null, ?array $confidenceSuffixes = null)
-    {
+    public function __construct(
+        ?array $parts = null,
+        ?array $confidenceSuffixes = null,
+        ?array $confidenceSalutations = null,
+    ) {
         $this->confidenceSuffixes = $confidenceSuffixes;
+        $this->confidenceSalutations = $confidenceSalutations;
 
         if ($parts !== null) {
             $this->setParts($parts);
@@ -85,11 +100,13 @@ class Name
     /**
      * record the normalized input this name was parsed from
      *
+     * @param  list<string>|null  $confidenceTokens
      * @return $this
      */
-    public function setSource(string $source): Name
+    public function setSource(string $source, ?array $confidenceTokens = null): Name
     {
         $this->source = $source;
+        $this->confidenceTokens = $confidenceTokens;
 
         return $this;
     }
@@ -117,7 +134,12 @@ class Name
      */
     public function getConfidence(): array
     {
-        return Confidence::assess($this->source ?? $this->__toString(), $this->confidenceSuffixes);
+        return Confidence::assess(
+            $this->source ?? $this->__toString(),
+            $this->confidenceSuffixes,
+            $this->confidenceSalutations,
+            $this->confidenceTokens,
+        );
     }
 
     /**
@@ -309,7 +331,7 @@ class Name
             }
         }
 
-        return new Name($parts, $this->confidenceSuffixes);
+        return new Name($parts, $this->confidenceSuffixes, $this->confidenceSalutations);
     }
 
     /**
