@@ -167,6 +167,27 @@ stay with the person actually named.
 
 Only the title-anchored form is detected. A bare `Brad and Jane Smith` has no
 honorific for the connector to attach to and reports `isJoint() === false`.
+Two people each given a name is the other undetected form:
+
+```php
+$parser->parse('Mr. Andrew and Mrs Sally Smith')->toArray();
+// salutation "Mr.", firstname "Andrew", middlename "Sally", lastname "Smith"
+```
+
+The conjunction and the second title are kept out of every getter rather than
+title-cased into a name, so `getMiddlename()` gives `Sally` and not
+`And Mrs Sally`. The parser does not decide that Sally is a second person, so her
+given name stays where it lands. Both tokens remain visible as `Ignored` parts in
+`getParts()` if you want to recover the structure yourself:
+
+```php
+use Iliaal\NameParser\Part\Ignored;
+
+$household = array_values(array_filter(
+    $name->getParts(),
+    static fn($part): bool => $part instanceof Ignored,
+));
+```
 
 ### Confidence / ambiguity
 

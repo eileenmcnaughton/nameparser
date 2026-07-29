@@ -27,6 +27,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A conjunction the honorific could not absorb is no longer title-cased into a name part, so `Andrew and Sally Smith` reports the middle name `Sally` instead of `And Sally`, and `Mr. and Brad Smith` reports the first name `Brad` instead of `And`. A title directly after such a conjunction addresses a second person, so it is dropped from the getters too (`Mr. Andrew and Mrs Sally Smith` no longer carries `Mrs` as a middle name). Both are marked as `Part\Ignored`, which no getter exports, so the text is still reachable through `Name::getParts()`. The parser still does not identify the second person: `isJoint()` and `getPartner()` need a title on both sides of the conjunction, and the second given name stays where it lands.
 - A two-letter surname particle written in caps inside mixed-case input is no longer shredded into initials, so `Jean DE Vries` keeps `de Vries` and `Mary LE Blanc` keeps `le Blanc` instead of reporting initials `D E` and `L E` with the particle dropped. Three-letter particles were never affected (`VON` exceeds the combined-initial limit).
 - Decomposed Unicode accents stay attached to their base letter during casing, initial splitting, and short-surname detection.
 - Credentials before a trailing nickname are retained in both Western and comma forms.

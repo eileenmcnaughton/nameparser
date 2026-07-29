@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser\Mapper;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Ignored;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
 use Iliaal\NameParser\Text;
@@ -159,7 +160,76 @@ class SalutationMapper extends AbstractMapper
             $scanned++;
         }
 
-        return array_merge($mapped, array_slice($parts, $input));
+        return $this->ignoreUnattributedTokens(
+            array_merge($mapped, array_slice($parts, $input)),
+            count($mapped),
+        );
+    }
+
+    /**
+     * A conjunction that the honorific did not absorb belongs to nobody: it is
+     * neither a title nor a name, so title-casing it into a given or middle name
+     * ("Andrew and Sally Smith" reporting the middle name "And") is wrong under
+     * every reading. A title directly after such a conjunction addresses a
+     * second person ("Mr. Andrew and Mrs Sally Smith"), so it is not this
+     * person's name part either.
+     *
+     * Both are marked Ignored, which no getter exports, rather than dropped, so
+     * the text stays visible in Name::getParts(). This does not identify the
+     * second person; the given name beside the title is left where it lands.
+     *
+     * The title rule requires the preceding conjunction on purpose. Several
+     * salutation keys double as credentials ("ms" is both Ms. and MS), and this
+     * mapper runs before SuffixMapper in the single-segment pipeline, so a blanket
+     * mid-stream title rule would swallow the credential in "Jane Doe MS".
+     *
+     * @param  PartArray  $parts
+     * @return PartArray
+     */
+    private function ignoreUnattributedTokens(array $parts, int $start): array
+    {
+        $afterConnector = false;
+
+        foreach ($parts as $index => $part) {
+            if ($index < $start || ! is_string($part)) {
+                $afterConnector = false;
+
+                continue;
+            }
+
+            if (isset(self::CONNECTOR_KEYS[$this->getKey($part)])) {
+                $parts[$index] = new Ignored($part);
+                $afterConnector = true;
+
+                continue;
+            }
+
+            if ($afterConnector && $this->isUnattributedTitle($parts, $index)) {
+                $parts[$index] = new Ignored($part);
+            }
+
+            $afterConnector = false;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * a dictionary title that is not also a real personal name, so reading it as
+     * a second addressee's honorific costs nothing ("Lord" and the other
+     * NAME_COLLIDING_KEYS stay name parts)
+     *
+     * @param  PartArray  $parts
+     */
+    private function isUnattributedTitle(array $parts, int $index): bool
+    {
+        [$part] = $this->matchAt($parts, $index);
+
+        $current = $parts[$index];
+
+        return $part instanceof Salutation
+            && is_string($current)
+            && ! isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)]);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\Part\Ignored;
 use Iliaal\NameParser\Part\Lastname;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -52,10 +53,12 @@ class JointSalutationTest extends TestCase
             'comma form'          => ['Mr. and Mrs. Smith, Brad', 'Mr. and Mrs.', 'Brad', 'Smith'],
             'comma stacked titles' => ['Doe, Rev. Dr. John', 'Rev. Dr.', 'John', 'Doe'],
 
-            // a connector needs a title on both sides
-            'no title after'      => ['Mr. and Brad Smith', 'Mr.', 'And', 'Smith'],
+            // a connector needs a title on both sides to join the honorific.
+            // Unjoined, it still belongs to nobody, so it is dropped from the
+            // getters rather than title-cased into a name ("And").
+            'no title after'      => ['Mr. and Brad Smith', 'Mr.', 'Brad', 'Smith'],
             'no title before'     => ['Brad and Smith', '', 'Brad', 'Smith'],
-            'doubled connector'   => ['Mr. and and Mrs. Smith', 'Mr.', 'And', 'Smith'],
+            'doubled connector'   => ['Mr. and and Mrs. Smith', 'Mr.', '', 'Smith'],
 
             // real names are matched whole, so these never come close
             'surname Anderson'    => ['Anderson, Andrea', '', 'Andrea', 'Anderson'],
@@ -65,10 +68,13 @@ class JointSalutationTest extends TestCase
             // single titles are untouched
             'single title'        => ['Mr. Brad Smith', 'Mr.', 'Brad', 'Smith'],
             'stacked titles'      => ['Rev. Dr John Doe', 'Rev. Dr.', 'John', 'Doe'],
-            // without a named person, the connector remains unresolved
-            'title-only joint'    => ['Mr. and Mrs.', 'Mr.', 'And', 'Mrs.'],
-            'title and credential only' => ['Smith, Mr. and Mrs. MD', 'Mr.', 'And', 'Smith'],
-            'title and nickname only' => ['Smith, Mr. and Mrs. (Bob)', 'Mr.', 'And', 'Smith'],
+            // Without a named person the connector never joins, so only the
+            // leading title resolves. The trailing "Mrs." addresses a second
+            // person nobody named, so it is not this person's surname either and
+            // "Mr. and Mrs." yields no name at all.
+            'title-only joint'    => ['Mr. and Mrs.', 'Mr.', '', ''],
+            'title and credential only' => ['Smith, Mr. and Mrs. MD', 'Mr.', '', 'Smith'],
+            'title and nickname only' => ['Smith, Mr. and Mrs. (Bob)', 'Mr.', '', 'Smith'],
         ];
     }
 
@@ -80,6 +86,108 @@ class JointSalutationTest extends TestCase
         $this->assertSame($salutation, $name->getSalutation(), "salutation for '$input'");
         $this->assertSame($first, $name->getFirstname(), "firstname for '$input'");
         $this->assertSame($last, $name->getLastname(), "lastname for '$input'");
+    }
+
+    /**
+     * A conjunction the honorific could not absorb belongs to nobody, so it is
+     * kept out of every getter instead of being title-cased into a name. Same
+     * for a title that directly follows one: it addresses a second person, not
+     * the person named here. The given name beside that title is left where it
+     * lands, since identifying the second person is a separate question.
+     *
+     * @param  array<string, string>  $expected
+     */
+    #[DataProvider('unattributedProvider')]
+    public function testUnabsorbedConnectorStaysOutOfTheGetters(string $input, array $expected): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($expected, $name->getAll(), "parts for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, array<string, string>}>
+     */
+    public static function unattributedProvider(): array
+    {
+        return [
+            // two named people sharing a surname: the conjunction and the second
+            // title go, the second given name stays as a middle name
+            'two givens with titles' => ['Mr. Andrew and Mrs Sally Smith', [
+                'salutation' => 'Mr.', 'firstname' => 'Andrew',
+                'middlename' => 'Sally', 'lastname' => 'Smith',
+            ]],
+            'two givens no titles' => ['Andrew and Sally Smith', [
+                'firstname' => 'Andrew', 'middlename' => 'Sally', 'lastname' => 'Smith',
+            ]],
+            'two givens ampersand' => ['Andrew & Sally Smith', [
+                'firstname' => 'Andrew', 'middlename' => 'Sally', 'lastname' => 'Smith',
+            ]],
+            'two givens prefix surname' => ['Andrew and Sally van der Berg', [
+                'firstname' => 'Andrew', 'middlename' => 'Sally', 'lastname' => 'van der Berg',
+            ]],
+        ];
+    }
+
+    /**
+     * the raw text is marked Ignored rather than dropped, so a caller that wants
+     * the household structure can still recover it from getParts()
+     */
+    public function testIgnoredTokensStayVisibleInGetParts(): void
+    {
+        $name = (new Parser())->parse('Mr. Andrew and Mrs Sally Smith');
+
+        $ignored = [];
+
+        foreach ($name->getParts() as $part) {
+            if ($part instanceof Ignored) {
+                $ignored[] = $part->getValue();
+            }
+        }
+
+        $this->assertSame(['and', 'Mrs'], $ignored);
+    }
+
+    /**
+     * Several salutation keys double as credentials ("ms" is both Ms. and MS),
+     * and SalutationMapper runs before SuffixMapper in the single-segment
+     * pipeline. Only a title introduced by a conjunction is dropped, so a
+     * trailing credential is untouched.
+     */
+    #[DataProvider('credentialCollisionProvider')]
+    public function testTitleShapedCredentialIsNotDropped(string $input, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('Jane', $name->getFirstname(), "first name for '$input'");
+        $this->assertSame('Doe', $name->getLastname(), "last name for '$input'");
+        $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, string}>
+     */
+    public static function credentialCollisionProvider(): array
+    {
+        return [
+            'ms space form' => ['Jane Doe MS', 'MS'],
+            'ms comma form' => ['Jane Doe, MS', 'MS'],
+            'ma space form' => ['Jane Doe MA', 'MA'],
+        ];
+    }
+
+    /**
+     * a title that is also a real personal name keeps its name reading, so the
+     * NAME_COLLIDING_KEYS carve-out is not undone by the conjunction rule
+     */
+    public function testNameCollidingTitleAfterConnectorStaysAName(): void
+    {
+        $name = (new Parser())->parse('John Lord Smith Jr');
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Lord', $name->getMiddlename());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('Jr', $name->getSuffix());
     }
 
     /**
