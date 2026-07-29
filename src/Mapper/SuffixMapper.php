@@ -259,7 +259,7 @@ class SuffixMapper extends AbstractMapper
         // terminal-token guard: a lone token that collides with a name is kept
         // as a name unless its casing reads as a credential (all-caps "DO"),
         // so "Smith, Do" keeps the given name but "Brown, DO" strips the cred.
-        if ($this->isAmbiguous($parts[0]) && ! $this->isUpperCase($parts[0])) {
+        if ($this->isAmbiguous($parts[0]) && ! $this->matchesCredentialCase($parts[0])) {
             return false;
         }
 
@@ -278,8 +278,9 @@ class SuffixMapper extends AbstractMapper
 
         if ($this->isAmbiguous($part)) {
             // casing as signal: ALL-CAPS reads as a credential ("DO", "VI"),
-            // Title/lower case reads as a name token ("Do", "Vi").
-            return $this->isUpperCase($part);
+            // Title/lower case reads as a name token ("Do", "Vi"). An exact
+            // mixed-case rendered form such as "LAc" is also a credential.
+            return $this->matchesCredentialCase($part);
         }
 
         return true;
@@ -414,5 +415,13 @@ class SuffixMapper extends AbstractMapper
     protected function isUpperCase(string $part): bool
     {
         return Text::isUpperCase($part);
+    }
+
+    private function matchesCredentialCase(string $part): bool
+    {
+        return Text::matchesCredentialCase(
+            $part,
+            $this->suffixes[$this->getKey($part)],
+        );
     }
 }

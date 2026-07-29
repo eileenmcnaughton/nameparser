@@ -22,6 +22,10 @@ class Confidence
      */
     public static function assess(string $original, ?array $suffixes = null): array
     {
+        if (! mb_check_encoding($original, 'UTF-8')) {
+            return ['ambiguous' => true, 'notes' => ['input is not valid UTF-8']];
+        }
+
         $tokens = preg_split('/[\s,]+/u', trim($original), -1, PREG_SPLIT_NO_EMPTY) ?: [];
 
         // derive uniform-case from tokens (same shape as the parser), never from
@@ -49,6 +53,7 @@ class Confidence
             $uniformLower = false;
         }
 
+        /** @var array<string, true> $notes */
         $notes = [];
         foreach ($tokens as $token) {
             $key = Text::key($token);
@@ -70,12 +75,12 @@ class Confidence
                 // unflagged to keep review noise down on all-caps datasets.
                 if (isset(SuffixMapper::NAME_LEANING_KEYS[$key])
                     || isset(SuffixMapper::SURNAME_COLLIDING_KEYS[$key])) {
-                    $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
+                    $notes["'{$token}' could be a name or a credential; input casing is uniform"] = true;
                 }
             } elseif ($uniformLower) {
-                $notes[] = "'{$token}' could be a name or a credential; input casing is uniform";
+                $notes["'{$token}' could be a name or a credential; input casing is uniform"] = true;
             } elseif ($tokenLower) {
-                $notes[] = "'{$token}' could be a name or a credential; token is lowercase";
+                $notes["'{$token}' could be a name or a credential; token is lowercase"] = true;
             }
         }
 
@@ -87,10 +92,10 @@ class Confidence
         $lead = $tokens[0] ?? '';
         if ($lead !== '' && count($tokens) === 2 && ! str_contains($original, ',')) {
             if (isset(SalutationMapper::NAME_COLLIDING_KEYS[Text::key($lead)])) {
-                $notes[] = "'{$lead}' could be a name or a salutation; nothing in the input decides it";
+                $notes["'{$lead}' could be a name or a salutation; nothing in the input decides it"] = true;
             }
         }
 
-        return ['ambiguous' => $notes !== [], 'notes' => $notes];
+        return ['ambiguous' => $notes !== [], 'notes' => array_keys($notes)];
     }
 }

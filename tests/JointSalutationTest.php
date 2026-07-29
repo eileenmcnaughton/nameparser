@@ -47,6 +47,7 @@ class JointSalutationTest extends TestCase
             'with credential'     => ['Mr. & Mrs. John Smith, MD', 'Mr. and Mrs.', 'John', 'Smith'],
             'with prefix surname' => ['Mr. and Mrs. van der Berg', 'Mr. and Mrs.', '', 'van der Berg'],
             'comma form'          => ['Mr. and Mrs. Smith, Brad', 'Mr. and Mrs.', 'Brad', 'Smith'],
+            'comma stacked titles' => ['Doe, Rev. Dr. John', 'Rev. Dr.', 'John', 'Doe'],
 
             // a connector needs a title on both sides
             'no title after'      => ['Mr. and Brad Smith', 'Mr.', 'And', 'Smith'],
@@ -61,6 +62,10 @@ class JointSalutationTest extends TestCase
             // single titles are untouched
             'single title'        => ['Mr. Brad Smith', 'Mr.', 'Brad', 'Smith'],
             'stacked titles'      => ['Rev. Dr John Doe', 'Rev. Dr.', 'John', 'Doe'],
+            // without a named person, the connector remains unresolved
+            'title-only joint'    => ['Mr. and Mrs.', 'Mr.', 'And', 'Mrs.'],
+            'title and credential only' => ['Smith, Mr. and Mrs. MD', 'Mr.', 'And', 'Smith'],
+            'title and nickname only' => ['Smith, Mr. and Mrs. (Bob)', 'Mr.', 'And', 'Smith'],
         ];
     }
 

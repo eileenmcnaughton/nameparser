@@ -148,4 +148,21 @@ class InitialMapperTest extends AbstractMapperTestCase
     {
         return new InitialMapper($maxCombined, $matchLastPart);
     }
+
+    public function testRejectsCombinedInitialLimitAboveHardCeiling(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        new InitialMapper(65);
+    }
+
+    public function testHardCeilingStillAllowsSixtyFourInitials(): void
+    {
+        $mapped = (new InitialMapper(64))->map([
+            str_repeat('A', 64),
+            'Smith',
+        ]);
+
+        $this->assertCount(65, $mapped);
+    }
 }

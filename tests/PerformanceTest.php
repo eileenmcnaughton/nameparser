@@ -9,28 +9,37 @@ class PerformanceTest extends TestCase
 {
     private const float MAX_SECONDS = 1.5;
 
+    private const float MAX_SCALING_RATIO = 3.0;
+
     public function testCombinedInitialExpansionRemainsLinearAtBatchScale(): void
     {
-        $elapsed = $this->parseSeconds(str_repeat('AB ', 32000) . 'Smith');
-
-        $this->assertLessThan(self::MAX_SECONDS, $elapsed);
+        $this->assertLinearScaling(
+            static fn(int $size): string => str_repeat('AB ', $size) . 'Smith',
+        );
     }
 
     public function testMultiwordSalutationMappingRemainsLinearAtBatchScale(): void
     {
-        $elapsed = $this->parseSeconds(str_repeat('the honorable ', 32000) . 'John Smith');
-
-        $this->assertLessThan(self::MAX_SECONDS, $elapsed);
+        $this->assertLinearScaling(
+            static fn(int $size): string => str_repeat('the honorable ', $size) . 'John Smith',
+        );
     }
 
     public function testSurnameFirstSalutationPeelingRemainsLinearAtBatchScale(): void
     {
-        $parser = (new Parser())->setSurnameFirst(true);
-        $started = hrtime(true);
-        $parser->parse(str_repeat('Dr ', 32000) . 'Kim Jong');
-        $elapsed = (hrtime(true) - $started) / 1_000_000_000;
+        $this->assertLinearScaling(
+            static fn(int $size): string => str_repeat('Dr ', $size) . 'Kim Jong',
+            true,
+        );
+    }
 
-        $this->assertLessThan(self::MAX_SECONDS, $elapsed);
+    public function testNestedNicknameDepthRemainsBoundedAtBatchScale(): void
+    {
+        $elapsed = $this->parseSeconds(
+            str_repeat('( ', 16000) . str_repeat(') ', 16000) . 'Smith',
+        );
+
+        $this->assertLessThan(0.2, $elapsed);
     }
 
     public function testCommaHeavyInputUsesBoundedWorkingMemory(): void
@@ -44,10 +53,26 @@ class PerformanceTest extends TestCase
         $this->assertLessThan(64 * 1024 * 1024, memory_get_peak_usage(true) - $baseline);
     }
 
-    private function parseSeconds(string $input): float
+    /**
+     * @param  callable(int): string  $input
+     */
+    private function assertLinearScaling(callable $input, bool $surnameFirst = false): void
+    {
+        $small = $this->parseSeconds($input(16000), $surnameFirst);
+        $large = $this->parseSeconds($input(32000), $surnameFirst);
+
+        $this->assertLessThan(self::MAX_SECONDS, $large);
+        $this->assertLessThan(
+            ($small * self::MAX_SCALING_RATIO) + 0.005,
+            $large,
+        );
+    }
+
+    private function parseSeconds(string $input, bool $surnameFirst = false): float
     {
         $started = hrtime(true);
-        (new Parser())->parse($input);
+        $parser = (new Parser())->setSurnameFirst($surnameFirst);
+        $parser->parse($input)->toArray();
 
         return (hrtime(true) - $started) / 1_000_000_000;
     }

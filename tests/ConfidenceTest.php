@@ -103,4 +103,23 @@ class ConfidenceTest extends TestCase
             $result['notes'],
         );
     }
+
+    public function testInvalidUtf8IsFlaggedInsteadOfPassingAsEmptyInput(): void
+    {
+        $result = Confidence::assess("Lord Ashcroft\xFF");
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(['input is not valid UTF-8'], $result['notes']);
+    }
+
+    public function testRepeatedAmbiguityReasonsAreDeduplicated(): void
+    {
+        $result = Confidence::assess('do do do');
+
+        $this->assertTrue($result['ambiguous']);
+        $this->assertSame(
+            ["'do' could be a name or a credential; input casing is uniform"],
+            $result['notes'],
+        );
+    }
 }

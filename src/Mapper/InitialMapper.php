@@ -13,12 +13,20 @@ use Iliaal\NameParser\Text;
  */
 class InitialMapper extends AbstractMapper
 {
+    public const int MAX_COMBINED = 64;
+
     private ?bool $uniformUpperOverride = null;
 
     public function __construct(
         private int $combinedMax = 2,
         protected bool $matchLastPart = false,
-    ) {}
+    ) {
+        if ($combinedMax < 0 || $combinedMax > self::MAX_COMBINED) {
+            throw new \InvalidArgumentException(
+                'Combined initials limit must be between 0 and ' . self::MAX_COMBINED,
+            );
+        }
+    }
 
     public function getCombinedMax(): int
     {

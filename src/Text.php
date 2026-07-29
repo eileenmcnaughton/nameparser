@@ -102,6 +102,16 @@ final class Text
     }
 
     /**
+     * ambiguous credentials normally require all-caps input, but a dictionary
+     * may intentionally render a mixed-case credential such as "LAc"
+     */
+    public static function matchesCredentialCase(string $token, string $rendered): bool
+    {
+        return self::isUpperCase($token)
+            || self::letters($token) === self::letters($rendered);
+    }
+
+    /**
      * an all-caps unknown token that reads as a credential candidate ("FACS"):
      * at least two letters, not bracket/quote-wrapped. Callers still gate on
      * dictionary membership and uniform-uppercase input.

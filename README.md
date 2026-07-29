@@ -227,9 +227,11 @@ Fluent setters on `Parser`:
   (`Mao Zedong` → last `Mao`). Opt-in; romanized order cannot be auto-detected.
 - `setNicknameDelimiters(['<<' => '>>'])` **replaces** the default pairs
   (`()[]{}<>` and quotes). An empty array restores the defaults; it does not
-  disable nicknames.
-- `setWhitespace`, `setMaxCombinedInitials`, `setMaxSalutationIndex` tune
-  collapse and mapper gates.
+  disable nicknames. At most 32 valid pairs are used; opener and closer strings
+  longer than 64 bytes are ignored.
+- `setWhitespace` and `setMaxSalutationIndex` tune collapse and mapper gates.
+- `setMaxCombinedInitials($limit)` accepts 0 through 64. Values outside that
+  range throw `InvalidArgumentException`.
 - `setMappers([...])` replaces the single-segment (Western, no-comma) pipeline
   only. Comma forms and `setSurnameFirst(true)` use dedicated sub-parsers that
   always build their own mapper lists from the language dictionaries. Pass `[]`

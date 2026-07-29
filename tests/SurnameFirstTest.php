@@ -88,6 +88,30 @@ class SurnameFirstTest extends TestCase
         $this->assertSame('Un', $name->getMiddlename());
     }
 
+    #[DataProvider('compoundLeadingSalutationProvider')]
+    public function testCompoundLeadingSalutationIsPeeled(string $input, string $salutation, bool $joint): void
+    {
+        $name = (new Parser())->setSurnameFirst(true)->parse($input);
+
+        $this->assertSame($salutation, $name->getSalutation());
+        $this->assertSame($joint, $name->isJoint());
+        $this->assertSame('Kim', $name->getLastname());
+        $this->assertSame('Jong', $name->getFirstname());
+        $this->assertSame('Un', $name->getMiddlename());
+    }
+
+    /**
+     * @return array<string, array{string, string, bool}>
+     */
+    public static function compoundLeadingSalutationProvider(): array
+    {
+        return [
+            'leading article' => ['The Rev. Kim Jong Un', 'Rev.', false],
+            'stacked titles'  => ['Rev. Dr. Kim Jong Un', 'Rev. Dr.', false],
+            'joint titles'    => ['Mr. and Mrs. Kim Jong Un', 'Mr. and Mrs.', true],
+        ];
+    }
+
     /**
      * a credential-only comma tail leaves an empty given segment; surname-first
      * order must be preserved for the surname portion rather than falling back

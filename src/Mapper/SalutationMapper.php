@@ -5,6 +5,7 @@ namespace Iliaal\NameParser\Mapper;
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
+use Iliaal\NameParser\Text;
 
 /**
  * @phpstan-import-type PartArray from AbstractMapper
@@ -74,7 +75,9 @@ class SalutationMapper extends AbstractMapper
     #[\Override]
     public function map(array $parts): array
     {
-        $max = ($this->maxIndex > 0) ? min($this->maxIndex, count($parts)) : max(1, intdiv(count($parts), 2));
+        $max = ($this->maxIndex > 0)
+            ? min($this->maxIndex, count($parts))
+            : max(1, count($parts) - 1);
 
         $mapped = [];
         $input = 0;
@@ -99,7 +102,7 @@ class SalutationMapper extends AbstractMapper
                 && isset(self::CONNECTOR_KEYS[$this->getKey($part)])
                 && $mapped !== []
                 && end($mapped) instanceof Salutation
-                && $this->isSalutationAt($parts, $input + $consumed)) {
+                && $this->isSalutationAtWithRemainder($parts, $input + $consumed)) {
                 $mapped[] = new SalutationConnector($part, self::CONNECTOR_RENDERED);
                 $input += $consumed;
 
@@ -124,8 +127,8 @@ class SalutationMapper extends AbstractMapper
             // also a real name ("Lord, Jack"); an unambiguous title stays a
             // salutation ("Dr., John").
             if ($this->requireRemainder
-                && $input + $consumed >= $total
-                && isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])) {
+                && isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])
+                && ! $this->hasNameRemainder($parts, $input + $consumed)) {
                 break;
             }
 
@@ -180,15 +183,32 @@ class SalutationMapper extends AbstractMapper
      *
      * @param  PartArray  $parts
      */
-    private function isSalutationAt(array $parts, int $index): bool
+    private function isSalutationAtWithRemainder(array $parts, int $index): bool
     {
         if (! isset($parts[$index]) || ! is_string($parts[$index])) {
             return false;
         }
 
-        [$part] = $this->matchAt($parts, $index);
+        [$part, $consumed] = $this->matchAt($parts, $index);
 
-        return $part instanceof Salutation;
+        return $part instanceof Salutation
+            && $this->hasNameRemainder($parts, $index + $consumed);
+    }
+
+    /**
+     * @param  PartArray  $parts
+     */
+    private function hasNameRemainder(array $parts, int $start): bool
+    {
+        for ($i = $start; $i < count($parts); $i++) {
+            $part = $parts[$i];
+
+            if (is_string($part) && Text::letters($part) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

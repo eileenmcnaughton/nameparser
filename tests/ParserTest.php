@@ -4,7 +4,9 @@ namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Confidence;
 use Iliaal\NameParser\Language\German;
+use Iliaal\NameParser\Mapper\AbstractMapper;
 use Iliaal\NameParser\Mapper\FirstnameMapper;
+use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Name;
 use Iliaal\NameParser\Parser;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -705,6 +707,20 @@ class ParserTest extends TestCase
         $this->assertSame('P A G', $parser->parse('Charles PAG Mountbatten-Windsor')->getInitials());
     }
 
+    public function testRejectsMaxCombinedInitialsAboveHardCeiling(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new Parser())->setMaxCombinedInitials(65);
+    }
+
+    public function testRejectsNegativeMaxCombinedInitials(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new Parser())->setMaxCombinedInitials(-1);
+    }
+
     public function testConfigChangeAfterFirstParseTakesEffect(): void
     {
         // a reused parser must honor a setter called after the first parse(),
@@ -740,6 +756,58 @@ class ParserTest extends TestCase
         $parser = (new Parser())->setMappers([new FirstnameMapper()]);
         $parser->setNicknameDelimiters(['<' => '>']);
         $this->assertSame('', $parser->parse('John Smith')->getLastname());
+    }
+
+    public function testConfigSetterPreservesCallerOwnedMapperState(): void
+    {
+        $suffixMapper = new SuffixMapper(['xyz' => 'XYZ']);
+        $parser = (new Parser())->setMappers([$suffixMapper]);
+
+        $this->assertSame('XYZ', $parser->parse('John XYZ')->getSuffix());
+
+        $parser->setWhitespace(' ');
+
+        $this->assertSame($suffixMapper, $parser->getMappers()[0]);
+        $this->assertSame('XYZ', $parser->parse('John XYZ')->getSuffix());
+    }
+
+    public function testSparseCustomMapperOutputIsNormalizedForStockMappers(): void
+    {
+        $sparseMapper = new class extends AbstractMapper {
+            #[\Override]
+            public function map(array $parts): array
+            {
+                return [5 => $parts[0]];
+            }
+        };
+
+        $name = (new Parser())
+            ->setMappers([$sparseMapper, new FirstnameMapper()])
+            ->parse('John');
+
+        $this->assertSame('John', $name->getFirstname());
+    }
+
+    public function testCommaParsingUsesProtectedSplitHook(): void
+    {
+        $parser = new class extends Parser {
+            public bool $splitHookCalled = false;
+
+            #[\Override]
+            protected function parseSplitName(string $surname, string $given): Name
+            {
+                $this->splitHookCalled = true;
+
+                return parent::parseSplitName($surname, $given);
+            }
+        };
+
+        $name = $parser->parse('Smith, John, MD');
+
+        $this->assertTrue($parser->splitHookCalled);
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('MD', $name->getSuffix());
     }
 
     public function testSubclassMayOverrideSettersWithConcreteReturnType(): void

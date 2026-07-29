@@ -165,6 +165,18 @@ class RobustnessTest extends TestCase
         $this->assertSame('Smith', $name->getLastname());
     }
 
+    public function testOversizedNicknameDelimiterIsIgnoredWithoutWarnings(): void
+    {
+        $opener = str_repeat('a', 65);
+        $parser = (new Parser())->setNicknameDelimiters([
+            $opener => ']',
+        ]);
+        $name = $parser->parse($opener . 'Bob] Smith');
+
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('', $name->getNickname());
+    }
+
     public function testEmptyNicknameCloserIsIgnoredWithoutWarnings(): void
     {
         // empty closer cannot close a span; drop the pair and fall back to no-op

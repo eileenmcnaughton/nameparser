@@ -59,6 +59,14 @@ class NameTest extends TestCase
         $this->assertSame('van Delft', $name->getLastname());
     }
 
+    public function testPureLastnameIncludesConsumerSubclass(): void
+    {
+        $lastname = new class ('Smith') extends Lastname {};
+        $name = new Name([$lastname]);
+
+        $this->assertSame('Smith', $name->getLastname(true));
+    }
+
     public function testGetAllRetainsPartNormalizingToStringZero(): void
     {
         $name = new Name([

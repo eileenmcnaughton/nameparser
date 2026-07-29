@@ -17,6 +17,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `Confidence::assess()` flags a two-token input led by an honorific that is also a real name (`Lord Ashcroft`, `Pastor Gonzalez`, `Hon Chan`), where the title reading leaves no given name and nothing in the input decides between the two. A comma resolves it structurally (`Lord, Jack`) and a third token leaves a given name either way (`Lady Diana Spencer`), so neither is flagged.
+- `setMaxCombinedInitials()` now accepts only 0 through 64, preventing hostile configuration from expanding one token into an unbounded part list. Nickname delimiter configuration is similarly bounded to 32 pairs of at most 64 bytes each.
 - Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
 - Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
 - A pure all-caps unknown-candidate segment with no prior dictionary anchor is kept as a name rather than promoted to a suffix when a later credential appears (`Smith, JOHN, MD` → first `John`, suffix `MD`). Unknown candidates still ride after a known credential (`MD, FACS`) and peel from a mixed segment onto a later dictionary segment (`John FACS, MD`). Prefer `Smith, MD, FACS` when the unknown stands alone before the known credential.
@@ -24,6 +25,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Canonical mixed-case credentials such as `LAc` and `L.Ac.` are recognized without making the title-case name `Lac` ambiguous.
+- Comma parsing once again dispatches through the protected `parseSplitName()` extension hook.
+- Caller-owned mapper objects retain their dictionaries and state after parser configuration changes, and sparse custom mapper output is normalized before the next mapper runs.
+- Invalid UTF-8 is reported as ambiguous by `Confidence::assess()`, and repeated ambiguity reasons are emitted once.
+- Pure lastname export includes consumer subclasses of `Lastname` without folding `LastnamePrefix` into the value.
+- Stacked and joint salutations use the same named-person boundary in comma and surname-first forms; nickname- or credential-only tails do not satisfy that boundary.
 - A salutation that is also a real name no longer swallows the comma form's surname segment, so `Lord, Jack` keeps `Lord` as the surname (previously it became a salutation and the surname was dropped entirely). This also covers the pre-existing `Master, John` and `Hon, John`. An unambiguous title is unchanged: `Dr., John` still reads as a salutation.
 - A dictionary salutation that follows a real name token stays part of the name rather than being promoted and dropped from the getters, so `John Lord Smith Jr` keeps `Lord` as the middle name and `Blair, Kathleen MASTER OF SOCIAL WOR` no longer reports a `Mr.` salutation. Only a leading article may sit before an honorific (`The Rev. Mark Williams`); an explicit `setMaxSalutationIndex()` still scans past leading name tokens.
 - Comma credentials retain source order, and an unknown all-caps candidate cannot cross a preserved name segment to consume a given name.

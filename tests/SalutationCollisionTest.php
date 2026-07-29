@@ -103,6 +103,63 @@ class SalutationCollisionTest extends TestCase
         $this->assertSame('RN', $name->getSuffix());
     }
 
+    public function testCollidingGivenNameSurvivesACredentialTail(): void
+    {
+        $name = (new Parser())->parse('Smith, Lord RN');
+
+        $this->assertSame('', $name->getSalutation());
+        $this->assertSame('Lord', $name->getFirstname());
+        $this->assertSame('Smith', $name->getLastname());
+        $this->assertSame('RN', $name->getSuffix());
+    }
+
+    #[DataProvider('decoratedCollidingSurnameProvider')]
+    public function testCollidingSurnameSurvivesNonNameDecoration(string $input, string $nickname, string $suffix): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('', $name->getSalutation());
+        $this->assertSame('Jack', $name->getFirstname());
+        $this->assertSame('Lord', $name->getLastname());
+        $this->assertSame($nickname, $name->getNickname());
+        $this->assertSame($suffix, $name->getSuffix());
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function decoratedCollidingSurnameProvider(): array
+    {
+        return [
+            'nickname'   => ['Lord (Bob), Jack', 'Bob', ''],
+            'credential' => ['Lord MD, Jack', '', 'MD'],
+        ];
+    }
+
+    #[DataProvider('collidingTitleWithNameRemainderProvider')]
+    public function testCollidingTitleStillMapsWithARealNameRemainder(
+        string $input,
+        string $first,
+        string $last,
+    ): void {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('Lord', $name->getSalutation());
+        $this->assertSame($first, $name->getFirstname());
+        $this->assertSame($last, $name->getLastname());
+    }
+
+    /**
+     * @return array<string, array{string, string, string}>
+     */
+    public static function collidingTitleWithNameRemainderProvider(): array
+    {
+        return [
+            'given segment'   => ['Smith, Lord John', 'John', 'Smith'],
+            'surname segment' => ['Lord Brown, Jack', 'Jack', 'Brown'],
+        ];
+    }
+
     /**
      * every rendered salutation has to parse back into the same salutation, or
      * the parser cannot read its own output

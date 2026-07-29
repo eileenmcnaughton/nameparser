@@ -13,6 +13,7 @@ use Iliaal\NameParser\Mapper\SuffixMapper;
 use Iliaal\NameParser\Part\Firstname;
 use Iliaal\NameParser\Part\GivenNamePart;
 use Iliaal\NameParser\Part\Lastname;
+use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\Suffix;
 
 class Parser
@@ -29,6 +30,8 @@ class Parser
     // private: internal bookkeeping, and a protected declaration would fatal
     // any subclass that already declares a property with this name
     private bool $customMappers = false;
+
+    private bool $resyncCustomMappers = false;
 
     /**
      * @var array<int, LanguageInterface>
@@ -138,24 +141,10 @@ class Parser
         $segments = $this->splitStructuralCommas($name);
 
         if (count($segments) > 1) {
-            $surname = $segments[0];
-            $tailSegments = array_slice($segments, 1);
-            $uniformUpper = $this->isUniformUpperInput($name);
-
-            // a whole post-comma segment that is nothing but credentials
-            // ("John Smith, MD, FACS") must not be flattened into the given
-            // segment, where an isolated all-caps run reads as a first name. It
-            // is pulled out to Suffix parts; the rest folds into the given
-            // segment as before ("Smith, John, MD, PhD" keeps John as the first
-            // name). Uniformity is judged over the whole input, so an unknown
-            // credential candidate ("FACS") is only recognized when the casing
-            // still carries a signal.
-            $givenParts = $this->splitCommaCredentials(
-                $tailSegments,
-                $uniformUpper,
-            );
-
-            return $this->parseSplitParts($surname, $givenParts, $uniformUpper)
+            return $this->parseSplitName(
+                $segments[0],
+                implode(',', array_slice($segments, 1)),
+            )
                 ->setSource($name);
         }
 
@@ -210,11 +199,13 @@ class Parser
             return $this->makeName($this->getFirstSegmentParser()->parse($surname)->getParts());
         }
 
-        return $this->parseSplitParts(
-            $surname,
-            $this->tokenizeWords($given),
-            $this->isUniformUpperInput($surname . ' ' . $given),
-        );
+        $uniformUpper = $this->isUniformUpperInput($surname . ' ' . $given);
+        $segments = $this->splitStructuralCommas($given);
+        $givenParts = count($segments) > 1
+            ? $this->splitCommaCredentials($segments, $uniformUpper)
+            : $this->tokenizeWords($given);
+
+        return $this->parseSplitParts($surname, $givenParts, $uniformUpper);
     }
 
     /**
@@ -546,7 +537,7 @@ class Parser
 
         if (array_key_exists($key, $this->getSuffixes())) {
             if (isset(SuffixMapper::AMBIGUOUS_KEYS[$key])) {
-                return Text::isUpperCase($token) ? 1 : 0;
+                return Text::matchesCredentialCase($token, $this->getSuffixes()[$key]) ? 1 : 0;
             }
 
             return 1;
@@ -618,7 +609,7 @@ class Parser
         }
 
         foreach ($this->getMappers() as $mapper) {
-            $filtered = $mapper->map($filtered);
+            $filtered = array_values($mapper->map($filtered));
         }
 
         return $this->makeName($filtered);
@@ -651,9 +642,9 @@ class Parser
         // NicknameMapper runs so a left-side nick ("John (Bob) Smith, Jane") is
         // extracted rather than folded into the surname
         return $this->surnameSegmentParser ??= $this->newSegmentParser()->setMappers([
-            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex(), true),
             new SuffixMapper($this->getSuffixes(), false, 1),
             new NicknameMapper($this->getNicknameDelimiters()),
+            new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex(), true),
             new LastnameMapper($this->getPrefixes(), true, true),
         ]);
     }
@@ -665,8 +656,8 @@ class Parser
             $this->secondSegmentSuffixMapper = new SuffixMapper($this->getSuffixes(), true, 0);
             $this->secondSegmentParser = $this->newSegmentParser()->setMappers([
                 $this->secondSegmentSuffixMapper,
-                new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex()),
                 new NicknameMapper($this->getNicknameDelimiters()),
+                new SalutationMapper($this->getSalutations(), $this->getMaxSalutationIndex(), true),
                 $this->secondSegmentInitialMapper,
                 new FirstnameMapper(),
                 new MiddlenameMapper(true, $this->getPrefixes()),
@@ -730,8 +721,14 @@ class Parser
      */
     public function setMappers(array $mappers): Parser
     {
+        $promotesDefaultMappers = $mappers !== []
+            && ! $this->customMappers
+            && $this->mappers !== []
+            && $mappers === $this->mappers;
+
         $this->mappers = $mappers;
         $this->customMappers = $mappers !== [];
+        $this->resyncCustomMappers = $promotesDefaultMappers;
 
         return $this;
     }
@@ -753,9 +750,10 @@ class Parser
 
         if (! $this->customMappers) {
             $this->mappers = [];
-        } else {
-            // custom list identity is preserved, but stock mappers still pick up
-            // new maxCombinedInitials / maxSalutationIndex / delimiters / dicts
+            $this->resyncCustomMappers = false;
+        } elseif ($this->resyncCustomMappers) {
+            // a caller may promote getMappers() into a custom list; those
+            // parser-owned defaults still follow later config changes
             $this->resyncConfigurableMappers();
         }
 
@@ -767,8 +765,8 @@ class Parser
     }
 
     /**
-     * rebuild Initial/Salutation/Nickname/Suffix mappers inside a custom list
-     * from the current parser config, preserving order and non-stock mappers
+     * rebuild configurable mappers in a promoted default list from current
+     * parser config, preserving mapper order
      */
     private function resyncConfigurableMappers(): void
     {
@@ -1100,54 +1098,37 @@ class Parser
      */
     private function peelLeadingSalutations(array &$tokens): array
     {
-        $salutations = $this->getSalutations();
-        $maxWords = $this->maxSalutationWords();
+        $mapped = (new SalutationMapper($this->getSalutations()))->map($tokens);
         $offset = 0;
-        $total = count($tokens);
+        $peeled = [];
+        $sawSalutation = false;
 
-        while ($offset < $total) {
-            $matched = 0;
-
-            for ($n = min($total - $offset, $maxWords); $n >= 1; $n--) {
-                $key = Text::key(implode(' ', array_slice($tokens, $offset, $n)));
-
-                if (array_key_exists($key, $salutations)) {
-                    $matched = $n;
-
-                    break;
-                }
-            }
-
-            if ($matched === 0) {
-                break;
-            }
-
-            $offset += $matched;
+        if (isset($mapped[0], $mapped[1])
+            && is_string($mapped[0])
+            && Text::key($mapped[0]) === 'the'
+            && $mapped[1] instanceof Salutation) {
+            $peeled[] = $mapped[0];
+            $offset++;
         }
 
-        $peeled = array_slice($tokens, 0, $offset);
-        $tokens = array_slice($tokens, $offset);
+        while (isset($mapped[$offset]) && $mapped[$offset] instanceof Salutation) {
+            $peeled[] = $mapped[$offset]->normalize();
+            $sawSalutation = true;
+            $offset++;
+        }
+
+        if (! $sawSalutation) {
+            return [];
+        }
+
+        $tokens = [];
+        foreach (array_slice($mapped, $offset) as $part) {
+            if (is_string($part)) {
+                $tokens[] = $part;
+            }
+        }
 
         return $peeled;
-    }
-
-    /**
-     * the greatest word count among the configured salutation keys, bounding the
-     * multi-word match window in peelLeadingSalutations()
-     */
-    private function maxSalutationWords(): int
-    {
-        $max = 1;
-
-        foreach (array_keys($this->getSalutations()) as $key) {
-            $words = substr_count((string) $key, ' ') + 1;
-
-            if ($words > $max) {
-                $max = $words;
-            }
-        }
-
-        return $max;
     }
 
     /**
@@ -1265,6 +1246,12 @@ class Parser
 
     public function setMaxCombinedInitials(int $maxCombinedInitials): Parser
     {
+        if ($maxCombinedInitials < 0 || $maxCombinedInitials > InitialMapper::MAX_COMBINED) {
+            throw new \InvalidArgumentException(
+                'Combined initials limit must be between 0 and ' . InitialMapper::MAX_COMBINED,
+            );
+        }
+
         $this->maxCombinedInitials = $maxCombinedInitials;
         $this->invalidateMapperCache();
 

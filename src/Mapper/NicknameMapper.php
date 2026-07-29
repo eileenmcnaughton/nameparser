@@ -10,6 +10,12 @@ use Iliaal\NameParser\Part\Nickname;
  */
 class NicknameMapper extends AbstractMapper
 {
+    private const int MAX_DELIMITER_BYTES = 64;
+
+    private const int MAX_DELIMITER_PAIRS = 32;
+
+    private const int MAX_NESTING_DEPTH = 64;
+
     /**
      * default nickname delimiter pairs; also used by Parser for structural
      * comma masking so the two stay in lockstep
@@ -54,13 +60,20 @@ class NicknameMapper extends AbstractMapper
         // the /u pattern fail compilation with a warning per token. Drop both
         // classes; if nothing valid remains the mapper no-ops (buildRegexp
         // returns '').
-        $this->delimiters = array_filter(
-            $this->delimiters,
-            static fn(string $close, string $open): bool => $open !== ''
-                && $close !== ''
-                && mb_check_encoding($open, 'UTF-8')
-                && mb_check_encoding($close, 'UTF-8'),
-            ARRAY_FILTER_USE_BOTH
+        $this->delimiters = array_slice(
+            array_filter(
+                $this->delimiters,
+                static fn(string $close, string $open): bool => $open !== ''
+                    && $close !== ''
+                    && strlen($open) <= self::MAX_DELIMITER_BYTES
+                    && strlen($close) <= self::MAX_DELIMITER_BYTES
+                    && mb_check_encoding($open, 'UTF-8')
+                    && mb_check_encoding($close, 'UTF-8'),
+                ARRAY_FILTER_USE_BOTH
+            ),
+            0,
+            self::MAX_DELIMITER_PAIRS,
+            true,
         );
 
         $this->regexp = $this->buildRegexp();
@@ -124,7 +137,7 @@ class NicknameMapper extends AbstractMapper
                     || (! isset($openSymmetric[$opener])
                         && $this->symmetricCloserAppears($parts, $k, $stripped, $closer));
 
-                if ($shouldOpen) {
+                if ($shouldOpen && count($delimiterStack) < self::MAX_NESTING_DEPTH) {
                     $delimiterStack[] = [
                         'open' => $opener,
                         'close' => $closer,

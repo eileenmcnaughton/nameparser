@@ -4,6 +4,7 @@ namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Part\AbstractPart;
 use Iliaal\NameParser\Part\Lastname;
+use Iliaal\NameParser\Part\LastnamePrefix;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
 
@@ -421,6 +422,10 @@ class Name
         $className = self::PARTS_NAMESPACE . '\\' . $type;
 
         if ($strict) {
+            if ($type === 'Lastname') {
+                return $part instanceof Lastname && ! $part instanceof LastnamePrefix;
+            }
+
             return $part::class === $className;
         }
 
