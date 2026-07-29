@@ -232,4 +232,118 @@ class SurnamePrefixTest extends TestCase
         $this->assertSame($last, $name->getLastname(), "last name for '$input'");
         $this->assertSame($suffix, $name->getSuffix(), "suffix for '$input'");
     }
+
+    /**
+     * Irish particles bind onto the lastname and keep their capitalised
+     * dictionary form. "Ó" is one grapheme, so InitialMapper would otherwise
+     * claim it as a middle initial and drop the particle from the surname.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function irishProvider(): array
+    {
+        return [
+            // input, expected first, expected last
+            'irish o'          => ['Éamon Ó Cuív', 'Éamon', 'Ó Cuív'],
+            'irish o again'    => ['Seán Ó Riada', 'Seán', 'Ó Riada'],
+            'irish ni'         => ['Mary Ní Mhaoileoin', 'Mary', 'Ní Mhaoileoin'],
+            'irish nic'        => ['Mary Nic Aodha', 'Mary', 'Nic Aodha'],
+            'irish ui'         => ['Bean Uí Bhriain', 'Bean', 'Uí Bhriain'],
+            'irish ua'         => ['Brian Ua Ceallaigh', 'Brian', 'Ua Ceallaigh'],
+            'irish mhic'       => ['Peig Mhic Gearailt', 'Peig', 'Mhic Gearailt'],
+            'comma form'       => ['Ó Cuív, Éamon', 'Éamon', 'Ó Cuív'],
+            'salutation led'   => ['Dr. Éamon Ó Cuív', 'Éamon', 'Ó Cuív'],
+
+            // the dictionary value carries the capital and the fada, so
+            // uniform-caps input still renders the particle correctly
+            'uniform uppercase' => ['ÉAMON Ó CUÍV', 'Éamon', 'Ó Cuív'],
+
+            // the apostrophe form is one token and needs no particle at all
+            'apostrophe form'  => ["Eamon O'Cuiv", 'Eamon', "O'Cuiv"],
+        ];
+    }
+
+    #[DataProvider('irishProvider')]
+    public function testIrishParticlesBindToLastname(string $input, string $first, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+    }
+
+    /**
+     * Only the fada-bearing "Ó" is a particle. Anglicised bare "O" between two
+     * spaces is indistinguishable from a middle initial ("John F Kennedy"), and
+     * casing is not available as a tie-break here, so it stays an initial.
+     */
+    public function testAnglicisedOStaysAnInitial(): void
+    {
+        $name = (new Parser())->parse('Eamon O Cuiv');
+
+        $this->assertSame('Eamon', $name->getFirstname());
+        $this->assertSame('O', $name->getInitials());
+        $this->assertSame('Cuiv', $name->getLastname());
+    }
+
+    /**
+     * A two-letter particle written in caps inside mixed-case input reads as
+     * combined initials ("DE" -> D E), which shredded the particle and dropped
+     * it from the surname. Three-letter particles never hit this because they
+     * exceed maxCombinedInitials.
+     *
+     * @return array<string, array{string, string, string}>
+     */
+    public static function uppercaseParticleProvider(): array
+    {
+        return [
+            // input, expected first, expected last
+            'caps le'   => ['Mary LE Blanc', 'Mary', 'le Blanc'],
+            'caps de'   => ['Jean DE Vries', 'Jean', 'de Vries'],
+            'caps du'   => ['Mary DU Pont', 'Mary', 'du Pont'],
+            'caps di'   => ['Marco DI Stefano', 'Marco', 'di Stefano'],
+            'caps la'   => ['Pierre LA Roche', 'Pierre', 'la Roche'],
+
+            // already worked: three letters exceed the combined-initial limit
+            'caps von'  => ['Hans VON Braun', 'Hans', 'von Braun'],
+        ];
+    }
+
+    #[DataProvider('uppercaseParticleProvider')]
+    public function testUppercaseParticleIsNotSplitIntoInitials(string $input, string $first, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+        $this->assertSame('', $name->getInitials(), "initials for '$input'");
+    }
+
+    /**
+     * The prefix guard must not swallow a genuine initial: no single letter and
+     * no combined pair in the dictionary, so the existing initial handling is
+     * untouched.
+     *
+     * @return array<string, array{string, string, string, string}>
+     */
+    public static function initialProvider(): array
+    {
+        return [
+            // input, expected first, expected initials, expected last
+            'bare initial'     => ['John F Kennedy', 'John', 'F', 'Kennedy'],
+            'dotted initial'   => ['John F. Kennedy', 'John', 'F.', 'Kennedy'],
+            'combined initials' => ['JM Walker', 'J', 'M', 'Walker'],
+            'two initials'     => ['J M Walker', 'J', 'M', 'Walker'],
+        ];
+    }
+
+    #[DataProvider('initialProvider')]
+    public function testInitialsSurviveThePrefixGuard(string $input, string $first, string $initials, string $last): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame($first, $name->getFirstname(), "first name for '$input'");
+        $this->assertSame($initials, $name->getInitials(), "initials for '$input'");
+        $this->assertSame($last, $name->getLastname(), "last name for '$input'");
+    }
 }

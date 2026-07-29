@@ -12,6 +12,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Name::isJoint()` reports a name whose honorific covers two people, for callers importing households. The parsed given and family name belong to the person actually named. Only the title-anchored form is detected: a bare `Brad and Jane Smith` has no honorific to anchor the connector and reports `false`.
 - `Name::getSalutations()` returns the honorific split one entry per person addressed, so a contact record with a single prefix field can take the first: `Mr. and Mrs. Brad Smith` gives `['Mr.', 'Mrs.']`, and the partner is that second title plus `getLastname()`. Stacked titles for one person stay in one entry (`Rev. Dr John Doe` gives `['Rev. Dr.']`), and a name with no honorific gives an empty list.
 - `Name::getPartner()` returns the second person a joint honorific addresses as a `Name` of her own, so a household import can build the partner contact without assembling strings: `Mr. and Mrs. Brad Smith` gives a partner with salutation `Mrs.` and lastname `Smith`. A particle surname crosses over whole (`van der Berg`); the given name, initials and any credential stay with the person actually named. Returns `null` when the honorific covers one person.
+- Irish surname particles `Ó`, `Ní`, `Nic`, `Uí`, `Ua`, and `Mhic`, so `Éamon Ó Cuív` keeps `Ó Cuív` as the surname instead of reading `Ó` as a middle initial. They render capitalised, unlike the continental particles, and the fada survives uniform-caps input (`ÉAMON Ó CUÍV` → `Ó Cuív`). Only the fada-bearing `Ó` counts: anglicised `Eamon O Cuiv` is indistinguishable from a middle initial (`John F Kennedy`), so bare `O` stays an initial.
 - English honorifics `Dame`, `Lady`, `Lord`, `Pastor`, `Professor`, `Reverend`, and `Rt Hon` (`Lord Ashcroft` → salutation `Lord`, surname `Ashcroft`). `Rt Hon` also matches its abbreviated and article-led forms (`Rt. Hon. Boris Johnson`, `The Rt Hon Boris Johnson`).
 
 ### Changed
@@ -26,6 +27,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A two-letter surname particle written in caps inside mixed-case input is no longer shredded into initials, so `Jean DE Vries` keeps `de Vries` and `Mary LE Blanc` keeps `le Blanc` instead of reporting initials `D E` and `L E` with the particle dropped. Three-letter particles were never affected (`VON` exceeds the combined-initial limit).
 - Decomposed Unicode accents stay attached to their base letter during casing, initial splitting, and short-surname detection.
 - Credentials before a trailing nickname are retained in both Western and comma forms.
 - German-only and other custom language dictionaries no longer throw when an English ambiguous suffix key is absent.

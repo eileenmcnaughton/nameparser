@@ -149,10 +149,20 @@ class English implements LanguageInterface
         'le' => 'le',
         'lo' => 'lo',
         'los' => 'los',
+        // Irish particles render capitalised, unlike the continental
+        // tussenvoegsels: "Ó Cuív" and "Ní Mhaoileoin" are never written with a
+        // lowercase particle. Only the fada-bearing "Ó" is listed; bare ASCII
+        // "O" is indistinguishable from a middle initial ("John F Kennedy").
+        'mhic' => 'Mhic',
+        'ní' => 'Ní',
+        'nic' => 'Nic',
+        'ó' => 'Ó',
         'pietro' => 'pietro',
         'st' => 'st.',
         'ten' => 'ten',
         'ter' => 'ter',
+        'ua' => 'Ua',
+        'uí' => 'Uí',
         'van' => 'van',
         'vanden' => 'vanden',
         'vere' => 'vere',

@@ -60,6 +60,13 @@ ambiguous cases.
 - **Comma middle names.** Everything after the first comma is the given-name
   segment, so a comma-separated middle name is retained (`"Smith, John, Robert"`
   keeps `Robert`) while trailing credentials are still stripped.
+- **Particles short enough to read as initials.** A surname particle of one or
+  two letters was claimed as an initial before the surname mapper could bind it,
+  dropping it from the name: Irish `"Éamon Ó Cuív"` returned surname `Cuív`, and
+  a capitalised continental particle (`"Jean DE Vries"`, `"Mary LE Blanc"`) split
+  into initials `D E` and `L E`. Both keep the particle now. Irish `Ó`, `Ní`,
+  `Nic`, `Uí`, `Ua`, and `Mhic` are in the default dictionary and render
+  capitalised.
 
 ## Requirements
 
@@ -260,6 +267,12 @@ mean full name plus credentials (`Jane Doe, MD`) or surname plus credentials
 that case. Use an explicit given-name segment, for example
 `Hidalgo Castillo, Maria, MD`, or post-process feeds where the left side is a
 surname-only field.
+
+An anglicised Irish surname with the fada dropped is undecidable the same way.
+`Eamon O Cuiv` and `John F Kennedy` have identical structure, and casing offers
+no tie-break since both are capital letters, so a bare `O` between spaces stays a
+middle initial. The fada form `Ó` resolves as a particle, and the joined
+apostrophe form (`O'Cuiv`) is a single token that never needed one.
 
 Two-token surnames without particles are also ambiguous in space-separated names.
 `Jennifer Chen Wu` and `Mary Jo Li` share the same token structure, but one wants

@@ -19,9 +19,15 @@ class InitialMapper extends AbstractMapper
 
     private ?bool $uniformUpperOverride = null;
 
+    /**
+     * @param  array<int|string, string>  $prefixes  the lastname-prefix
+     *   dictionary, so a surname particle short enough to read as an initial is
+     *   left for LastnameMapper to bind
+     */
     public function __construct(
         private int $combinedMax = 2,
         protected bool $matchLastPart = false,
+        private array $prefixes = [],
     ) {
         if ($combinedMax < 0 || $combinedMax > self::MAX_COMBINED) {
             throw new \InvalidArgumentException(
@@ -83,6 +89,17 @@ class InitialMapper extends AbstractMapper
                 continue;
             }
 
+            // a surname particle can be short enough to read as an initial: one
+            // grapheme in Irish ("Éamon Ó Cuív") or two in caps ("Jean DE
+            // Vries", which the combined split would shred into D and E). This
+            // mapper runs ahead of LastnameMapper, so claiming the token here
+            // loses the particle outright. Leave it raw either way.
+            if ($this->isPrefix($part)) {
+                $mapped[] = $part;
+
+                continue;
+            }
+
             if ($splitCombined && mb_strtoupper($part, 'UTF-8') === $part) {
                 $stripped = str_replace('.', '', $part);
                 $length = Text::graphemeLength($stripped);
@@ -117,6 +134,12 @@ class InitialMapper extends AbstractMapper
         }
 
         return $mapped;
+    }
+
+    private function isPrefix(string $part): bool
+    {
+        return $this->prefixes !== []
+            && array_key_exists($this->getKey($part), $this->prefixes);
     }
 
     protected function isInitial(string $part): bool

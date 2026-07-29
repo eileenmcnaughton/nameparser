@@ -675,7 +675,7 @@ class Parser
             new SuffixMapper($this->getSuffixes(), false, 2),
             new NicknameMapper($this->getNicknameDelimiters()),
             new SuffixMapper($this->getSuffixes(), false, 2),
-            new InitialMapper($this->getMaxCombinedInitials()),
+            new InitialMapper($this->getMaxCombinedInitials(), false, $this->getPrefixes()),
             new LastnameMapper($this->getPrefixes(), true),
             new FirstnameMapper(),
             new MiddlenameMapper(false, $this->getPrefixes()),
@@ -705,7 +705,11 @@ class Parser
     protected function getSecondSegmentParser(): Parser
     {
         if ($this->secondSegmentParser === null) {
-            $this->secondSegmentInitialMapper = new InitialMapper($this->getMaxCombinedInitials(), true);
+            $this->secondSegmentInitialMapper = new InitialMapper(
+                $this->getMaxCombinedInitials(),
+                true,
+                $this->getPrefixes(),
+            );
             $this->secondSegmentSuffixMappers = [
                 new SuffixMapper($this->getSuffixes(), true, 0),
                 new SuffixMapper($this->getSuffixes(), true, 0),
@@ -761,7 +765,7 @@ class Parser
                 new SuffixMapper($this->getSuffixes()),
                 new NicknameMapper($this->getNicknameDelimiters()),
                 new SuffixMapper($this->getSuffixes()),
-                new InitialMapper($this->getMaxCombinedInitials()),
+                new InitialMapper($this->getMaxCombinedInitials(), false, $this->getPrefixes()),
                 new LastnameMapper($this->getPrefixes()),
                 new FirstnameMapper(),
                 new MiddlenameMapper(false, $this->getPrefixes()),
@@ -845,6 +849,7 @@ class Parser
                 $this->mappers[$i] = new InitialMapper(
                     $this->maxCombinedInitials,
                     $mapper->matchesLastPart(),
+                    $this->getPrefixes(),
                 );
             } elseif ($mapper instanceof SalutationMapper) {
                 $this->mappers[$i] = new SalutationMapper(
