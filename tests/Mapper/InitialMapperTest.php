@@ -190,4 +190,24 @@ class InitialMapperTest extends AbstractMapperTestCase
 
         $this->assertCount(65, $mapped);
     }
+
+    public function testAcceptsAggregateInitialExpansionAtSafeCeiling(): void
+    {
+        $mapped = (new InitialMapper(64))->map(array_merge(
+            array_fill(0, 2048, str_repeat('A', 64)),
+            ['Smith'],
+        ));
+
+        $this->assertCount(131073, $mapped);
+    }
+
+    public function testRejectsAggregateInitialExpansionOverSafeCeiling(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        (new InitialMapper(64))->map(array_merge(
+            array_fill(0, 2049, str_repeat('A', 64)),
+            ['Smith'],
+        ));
+    }
 }

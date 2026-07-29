@@ -235,7 +235,9 @@ Fluent setters on `Parser`:
   longer than 64 bytes are ignored.
 - `setWhitespace` and `setMaxSalutationIndex` tune collapse and mapper gates.
 - `setMaxCombinedInitials($limit)` accepts 0 through 64. Values outside that
-  range throw `InvalidArgumentException`.
+  range throw `InvalidArgumentException`; combined-token expansion is also
+  capped at 131,072 output parts per parse and throws `LengthException` above
+  that aggregate ceiling.
 - `setMappers([...])` replaces the single-segment (Western, no-comma) pipeline
   only. Comma forms and `setSurnameFirst(true)` use dedicated sub-parsers that
   always build their own mapper lists from the language dictionaries. Pass `[]`
@@ -247,6 +249,10 @@ Fluent setters on `Parser`:
 It throws `LengthException` before comma segmentation or mapper allocation when
 either limit is exceeded. These bounds keep malformed import rows from
 exhausting a PHP worker while retaining batch-scale inputs.
+
+Standalone `Confidence::assess($string)` applies the same byte and token limits.
+`Name::getConfidence()` reuses the tokens from the already validated parse
+instead of tokenizing the source again.
 
 Some inputs have no structural signal. A comma followed only by credentials can
 mean full name plus credentials (`Jane Doe, MD`) or surname plus credentials

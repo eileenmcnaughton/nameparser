@@ -26,6 +26,8 @@ class CommaSegmentTest extends TestCase
             'comma first then credentials'    => ['Smith, John, MD, PhD', 'John', '', 'Smith', 'MD PhD'],
             'credential-only given segment'   => ['Smith, MD, PhD', '', '', 'Smith', 'MD PhD'],
             'single credential given'         => ['Smith, MD', '', '', 'Smith', 'MD'],
+            'given named Della before credential' => ['Della Smith, MD', 'Della', '', 'Smith', 'MD'],
+            'given named Van before credential' => ['Van Smith, MD', 'Van', '', 'Smith', 'MD'],
             'comma suffix Jr'                 => ['Williams, Hank, Jr.', 'Hank', '', 'Williams', 'Jr'],
             'comma initial + suffix'          => ['Miller, Walter M., Jr.', 'Walter', '', 'Miller', 'Jr'],
             'compound surname'                => ['Hidalgo Castillo, Maria', 'Maria', '', 'Hidalgo Castillo', ''],
@@ -194,6 +196,27 @@ class CommaSegmentTest extends TestCase
         $this->assertSame('John', $name->getFirstname());
         $this->assertSame('Doe', $name->getLastname());
         $this->assertSame('Bob, Jr', $name->getNickname());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function quotedNicknameBeforeCommaProvider(): array
+    {
+        return [
+            'single quote' => ["Doe 'Bob, Robert', John"],
+            'double quote' => ['Doe "Bob, Robert", John'],
+        ];
+    }
+
+    #[DataProvider('quotedNicknameBeforeCommaProvider')]
+    public function testQuotedNicknameCloserBeforeStructuralComma(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertSame('John', $name->getFirstname());
+        $this->assertSame('Doe', $name->getLastname());
+        $this->assertSame('Bob, Robert', $name->getNickname());
     }
 
     public function testRevertedNicknameOpenerDropsTrailingComma(): void

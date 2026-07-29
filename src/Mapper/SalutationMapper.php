@@ -89,6 +89,8 @@ class SalutationMapper extends AbstractMapper
         $input = 0;
         $scanned = 0;
         $total = count($parts);
+        /** @var array{int, int}|null $remainderState */
+        $remainderState = null;
 
         while ($input < $total && $scanned < $max) {
             $current = $parts[$input];
@@ -107,12 +109,24 @@ class SalutationMapper extends AbstractMapper
             if (is_string($part)
                 && isset(self::CONNECTOR_KEYS[$this->getKey($part)])
                 && $mapped !== []
-                && end($mapped) instanceof Salutation
-                && $this->isSalutationAtWithRemainder($parts, $input + $consumed)) {
-                $mapped[] = new SalutationConnector($part, self::CONNECTOR_RENDERED);
-                $input += $consumed;
+                && end($mapped) instanceof Salutation) {
+                $next = $input + $consumed;
+                [$rightTitle, $rightConsumed] = isset($parts[$next])
+                    ? $this->matchAt($parts, $next)
+                    : [null, 0];
 
-                continue;
+                if ($rightTitle instanceof Salutation) {
+                    $remainderState ??= $this->analyzeRemainder($parts, $next + $rightConsumed);
+                }
+
+                if ($rightTitle instanceof Salutation
+                    && $remainderState !== null
+                    && $remainderState[1] >= $next + $rightConsumed) {
+                    $mapped[] = new SalutationConnector($part, self::CONNECTOR_RENDERED);
+                    $input += $consumed;
+
+                    continue;
+                }
             }
 
             // honorifics lead the name, so only a bare article may sit between
@@ -121,21 +135,23 @@ class SalutationMapper extends AbstractMapper
             // than to a title, so "John Lord Smith Jr" keeps Lord as a middle
             // name. An explicit maxSalutationIndex is the caller asserting that
             // titles do appear further in ("Francis Mr"), so it opts out.
-            if ($this->maxIndex === 0
+            if ($this->maxIndex <= 0
                 && is_string($part)
                 && $this->getKey($part) !== self::LEADING_ARTICLE) {
                 break;
             }
 
-            // the comma form asserts everything before the comma is the surname,
-            // so consuming the segment whole would leave the name with no
-            // surname at all. Only yield the last token back when the title is
-            // also a real name ("Lord, Jack"); an unambiguous title stays a
-            // salutation ("Dr., John").
-            if ($this->requireRemainder
-                && isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])
-                && ! $this->hasNameRemainder($parts, $input + $consumed)) {
-                break;
+            // A terminal title/name collision after another mapped title is the
+            // only available surname ("Mr. and Mrs. Lord"). The comma form
+            // independently asserts that its segment must retain a surname.
+            // Unambiguous titles remain salutations in both paths.
+            if (isset(self::NAME_COLLIDING_KEYS[$this->getKey($current)])
+                && ($this->requireRemainder || end($mapped) instanceof Salutation)) {
+                $remainderState ??= $this->analyzeRemainder($parts, $input + $consumed);
+
+                if ($remainderState[0] < $input + $consumed) {
+                    break;
+                }
             }
 
             $mapped[] = $part;
@@ -184,44 +200,83 @@ class SalutationMapper extends AbstractMapper
     }
 
     /**
-     * whether a title starts at the given index, used as the right-hand guard
-     * for a connector so "Mr. and Brad Smith" leaves the connector alone
-     *
      * @param  PartArray  $parts
+     * @return array{int, int} last raw-name index and last named-person index
      */
-    private function isSalutationAtWithRemainder(array $parts, int $index): bool
+    private function analyzeRemainder(array $parts, int $start): array
     {
-        if (! isset($parts[$index]) || ! is_string($parts[$index])) {
-            return false;
+        $decorated = array_slice($parts, $start);
+
+        if ($this->suffixes !== [] || $this->nicknameDelimiters !== []) {
+            $suffixMapper = new SuffixMapper($this->suffixes, true, 0);
+            $decorated = $suffixMapper->map($decorated);
+            $decorated = (new NicknameMapper($this->nicknameDelimiters))->map($decorated);
+            $decorated = $suffixMapper->map($decorated);
         }
 
-        [$part, $consumed] = $this->matchAt($parts, $index);
+        $lastRawNameIndex = -1;
+        $lastNamedPersonIndex = -1;
+        for ($index = count($decorated) - 1; $index >= 0; $index--) {
+            $part = $decorated[$index];
+            if (! is_string($part) || Text::letters($part) === '') {
+                continue;
+            }
 
-        return $part instanceof Salutation
-            && $this->hasNameRemainder($parts, $index + $consumed);
+            $lastRawNameIndex = max($lastRawNameIndex, $start + $index);
+            $key = $this->getKey($part);
+            if ($key === self::LEADING_ARTICLE || isset(self::CONNECTOR_KEYS[$key])) {
+                continue;
+            }
+
+            if ($this->isSalutationTokenAt($decorated, $index)) {
+                continue;
+            }
+
+            $lastNamedPersonIndex = $start + $index;
+
+            break;
+        }
+
+        return [$lastRawNameIndex, $lastNamedPersonIndex];
     }
 
     /**
      * @param  PartArray  $parts
      */
-    private function hasNameRemainder(array $parts, int $start): bool
+    private function isSalutationTokenAt(array $parts, int $index): bool
     {
-        $remainder = array_slice($parts, $start);
-
-        if ($this->suffixes !== [] || $this->nicknameDelimiters !== []) {
-            $suffixMapper = new SuffixMapper($this->suffixes, true, 0);
-            $remainder = $suffixMapper->map($remainder);
-            $remainder = (new NicknameMapper($this->nicknameDelimiters))->map($remainder);
-            $remainder = $suffixMapper->map($remainder);
+        $current = $parts[$index] ?? null;
+        if (! is_string($current)) {
+            return false;
         }
 
-        foreach ($remainder as $part) {
-            if (is_string($part) && Text::letters($part) !== '') {
-                return true;
+        $key = $this->getKey($current);
+        [$part] = $this->matchAt($parts, $index);
+        // An isolated colliding token can be the shared surname after a joint
+        // title. It is unambiguously a title only within a multi-word match or
+        // when a connector explicitly introduces it as the next title.
+        if ($part instanceof Salutation && ! isset(self::NAME_COLLIDING_KEYS[$key])) {
+            return true;
+        }
+
+        foreach ($this->multiWord as [$keys]) {
+            for ($offset = 0; $offset < count($keys); $offset++) {
+                $start = $index - $offset;
+                if ($start < 0) {
+                    continue;
+                }
+
+                if ($this->isMatchingSubset($keys, array_slice($parts, $start, count($keys)))) {
+                    return true;
+                }
             }
         }
 
-        return false;
+        $previous = $parts[$index - 1] ?? null;
+
+        return $part instanceof Salutation
+            && is_string($previous)
+            && isset(self::CONNECTOR_KEYS[$this->getKey($previous)]);
     }
 
     /**

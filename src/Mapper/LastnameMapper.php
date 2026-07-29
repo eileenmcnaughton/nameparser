@@ -260,7 +260,7 @@ class LastnameMapper extends AbstractMapper
         // in a surname-only segment (the part before the comma in "Last, First")
         // there is no firstname to prioritise, so a leading prefix with nothing
         // before it still belongs to the lastname rather than becoming a firstname
-        if ($this->matchSinglePart) {
+        if ($this->surnameOnly) {
             return true;
         }
 

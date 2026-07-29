@@ -40,6 +40,9 @@ class JointSalutationTest extends TestCase
             'two Dr, no first'    => ['Dr. & Dr. Chen', 'Dr. and Dr.', '', 'Chen'],
             'mixed titles'        => ['Dr. and Mrs. Brad Smith', 'Dr. and Mrs.', 'Brad', 'Smith'],
             'Prof pairing'        => ['Prof. and Mrs. Alan Turing', 'Prof. and Mrs.', 'Alan', 'Turing'],
+            'colliding surname'   => ['Mr. and Mrs. Lord', 'Mr. and Mrs.', '', 'Lord'],
+            'second colliding surname' => ['Mr. and Mrs. Pastor', 'Mr. and Mrs.', '', 'Pastor'],
+            'colliding surname after multi-word title' => ['Mr. and Rt Hon Lord', 'Mr. and Rt Hon.', '', 'Lord'],
 
             // composes with the rest of the pipeline
             'with initial'        => ['Mr. and Mrs. Brad J. Smith', 'Mr. and Mrs.', 'Brad', 'Smith'],
@@ -89,6 +92,28 @@ class JointSalutationTest extends TestCase
         $this->assertSame('', $name->getMiddlename());
         $this->assertSame('Brad', $name->getGivenName());
         $this->assertSame('Brad Smith', $name->getFullName());
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function titleOnlyConnectorProvider(): array
+    {
+        return [
+            'single-word titles' => ['Mr and Mrs and Ms MD'],
+            'colliding single-word title' => ['Mr and Mrs and Pastor MD'],
+            'multi-word Her Honour' => ['Mr and Her Honour MD'],
+            'multi-word Rt Hon' => ['Mr and Rt Hon MD'],
+        ];
+    }
+
+    #[DataProvider('titleOnlyConnectorProvider')]
+    public function testTitleOnlyConnectorChainDoesNotCreatePartner(string $input): void
+    {
+        $name = (new Parser())->parse($input);
+
+        $this->assertFalse($name->isJoint());
+        $this->assertNull($name->getPartner());
     }
 
     #[DataProvider('jointProvider')]
@@ -271,6 +296,7 @@ class JointSalutationTest extends TestCase
             'ampersand'         => ['Mr. & Mrs. Brad Smith', true],
             'two doctors'       => ['Dr. & Dr. Chen', true],
             'comma form'        => ['Mr. and Mrs. Smith, Brad', true],
+            'colliding surname' => ['Mr. and Mrs. Lord', true],
 
             'single title'      => ['Mr. Brad Smith', false],
             'no title'          => ['Brad Smith', false],

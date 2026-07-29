@@ -4,6 +4,7 @@ namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Confidence;
 use Iliaal\NameParser\Language\German;
+use Iliaal\NameParser\LanguageInterface;
 use Iliaal\NameParser\Mapper\AbstractMapper;
 use Iliaal\NameParser\Mapper\FirstnameMapper;
 use Iliaal\NameParser\Mapper\SuffixMapper;
@@ -692,6 +693,15 @@ class ParserTest extends TestCase
         $this->assertSame('Mr.', $parser->parse('Francis Mr')->getSalutation());
     }
 
+    public function testNegativeMaxSalutationIndexUsesDefaultSemantics(): void
+    {
+        $input = 'John Lord Smith Jr';
+        $default = (new Parser())->parse($input);
+        $negative = (new Parser())->setMaxSalutationIndex(-1)->parse($input);
+
+        $this->assertSame($default->toArray(), $negative->toArray());
+    }
+
     public function testSetMaxCombinedInitials(): void
     {
         $parser = new Parser();
@@ -930,6 +940,46 @@ class ParserTest extends TestCase
 
         $this->assertSame('J M A B', $parser->parse('John JMAB Walker')->getInitials());
         $this->assertSame('J M A B', $parser->parse('Walker, JMAB John')->getInitials());
+    }
+
+    public function testPromotedDefaultMappersRefreshMutableLanguagePrefixes(): void
+    {
+        $language = new class implements LanguageInterface {
+            /**
+             * @var array<string, string>
+             */
+            public array $prefixes = ['old' => 'old'];
+
+            #[\Override]
+            public function getSuffixes(): array
+            {
+                return [];
+            }
+
+            #[\Override]
+            public function getLastnamePrefixes(): array
+            {
+                return $this->prefixes;
+            }
+
+            #[\Override]
+            public function getSalutations(): array
+            {
+                return [];
+            }
+        };
+
+        $parser = new Parser([$language]);
+        $parser->setMappers($parser->getMappers());
+        $language->prefixes = ['xyz' => 'xyz'];
+        $parser->setWhitespace($parser->getWhitespace());
+
+        $western = $parser->parse('John xyz Smith');
+        $comma = $parser->parse('xyz Smith, John');
+
+        $this->assertSame('xyz', $western->getLastnamePrefix());
+        $this->assertSame('xyz Smith', $western->getLastname());
+        $this->assertSame($comma->toArray(), $western->toArray());
     }
 
     public function testGetSuffixesIsPublicForConfidenceAssess(): void

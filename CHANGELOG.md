@@ -17,8 +17,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 
 - `Confidence::assess()` flags a two-token input led by an honorific that is also a real name (`Lord Ashcroft`, `Pastor Gonzalez`, `Hon Chan`), where the title reading leaves no given name and nothing in the input decides between the two. A comma resolves it structurally (`Lord, Jack`) and a third token leaves a given name either way (`Lady Diana Spencer`), so neither is flagged.
-- `parse()` now rejects inputs over 1,048,576 bytes or 65,536 non-empty tokens with `LengthException` before structural allocation.
-- `setMaxCombinedInitials()` now accepts only 0 through 64, preventing hostile configuration from expanding one token into an unbounded part list. Nickname delimiter configuration is similarly bounded to 32 pairs of at most 64 bytes each.
+- `parse()` and standalone `Confidence::assess()` now reject inputs over 1,048,576 bytes or 65,536 non-empty tokens with `LengthException` before structural allocation.
+- `setMaxCombinedInitials()` now accepts only 0 through 64 and combined-token expansion is capped at 131,072 output parts per parse, preventing hostile configuration from creating an unbounded part list. Nickname delimiter configuration is similarly bounded to 32 pairs of at most 64 bytes each.
 - Large runs of combined initials, repeated salutations, and surname-first honorifics now parse in linear time instead of repeatedly reindexing the token array.
 - Comma-heavy malformed input no longer retains duplicate segment projections, cutting peak working memory for a 1 MB row from hundreds of megabytes to a linear bound.
 - A pure all-caps unknown-candidate segment with no prior dictionary anchor is kept as a name rather than promoted to a suffix when a later credential appears (`Smith, JOHN, MD` → first `John`, suffix `MD`). Unknown candidates still ride after a known credential (`MD, FACS`) and peel from a mixed segment onto a later dictionary segment (`John FACS, MD`). Prefer `Smith, MD, FACS` when the unknown stands alone before the known credential.
@@ -49,10 +49,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `setWhitespace('')` no longer leaves empty tokens that pollute `getGivenName()` / `full_name` with a stray space on double-spaced input.
 - Empty nickname closer strings are dropped with empty openers, so invalid delimiter config degrades to a no-op instead of an unclosable span.
 - Uniform-uppercase detection on comma input splits on commas as well as whitespace, so comma-dense rows do not force a full-string Unicode letters scan.
+- Comma-separated non-empty segments count toward the parser's 65,536-token ceiling.
+- Credential-only comma tails no longer reinterpret given names such as `Della` and `Van` as surname particles.
+- A quoted nickname whose closing quote immediately precedes a structural comma stays intact.
+- Connector-heavy salutation input is validated in linear time, and title-only connector chains no longer create a phantom joint partner.
+- Joint honorifics retain a terminal title-colliding shared surname (`Mr. and Mrs. Lord`) while still rejecting multi-word and connector-led title-only chains.
+- Promoted stock mapper pipelines refresh surname-particle dictionaries after a mutable language configuration changes.
+- Negative `setMaxSalutationIndex()` values now use the same leading-title semantics as the default value `0`.
+- Caller-supplied confidence tokens no longer bypass the byte or token ceilings.
 
 ### For contributors
 
-- CI now enforces the README punctuation rule, and the obsolete mbstring-absence mock dependency has been removed.
+- CI now enforces the README punctuation rule, rejects empty PHPUnit suites and deprecations, and no longer carries the obsolete mbstring-absence mock dependency.
 
 ## [1.3.0] - 2026-07-10
 

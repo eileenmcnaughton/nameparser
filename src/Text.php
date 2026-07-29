@@ -11,6 +11,10 @@ namespace Iliaal\NameParser;
  */
 final class Text
 {
+    public const int MAX_INPUT_BYTES = 1024 * 1024;
+
+    public const int MAX_INPUT_TOKENS = 65536;
+
     private const int MAX_NICKNAME_DELIMITER_BYTES = 64;
 
     private const int MAX_NICKNAME_DELIMITER_PAIRS = 32;
@@ -23,6 +27,24 @@ final class Text
      * @var array<string, string>
      */
     private static array $cache = [];
+
+    public static function assertInputByteBudget(string $input): void
+    {
+        if (strlen($input) > self::MAX_INPUT_BYTES) {
+            throw new \LengthException(
+                'Name input exceeds the ' . self::MAX_INPUT_BYTES . '-byte limit.',
+            );
+        }
+    }
+
+    public static function assertInputTokenCount(int $count): void
+    {
+        if ($count > self::MAX_INPUT_TOKENS) {
+            throw new \LengthException(
+                'Name input exceeds the ' . self::MAX_INPUT_TOKENS . '-token limit.',
+            );
+        }
+    }
 
     /**
      * registry lookup key for the given word

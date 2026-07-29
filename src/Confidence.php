@@ -28,11 +28,24 @@ class Confidence
         ?array $salutations = null,
         ?array $tokens = null,
     ): array {
+        Text::assertInputByteBudget($original);
+        if ($tokens !== null) {
+            Text::assertInputTokenCount(count($tokens));
+        }
+
         if (! mb_check_encoding($original, 'UTF-8')) {
             return ['ambiguous' => true, 'notes' => ['input is not valid UTF-8']];
         }
 
-        $tokens ??= preg_split('/[\s,]+/u', trim($original), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if ($tokens === null) {
+            $tokens = preg_split(
+                '/[\s,]+/u',
+                trim($original),
+                Text::MAX_INPUT_TOKENS + 1,
+                PREG_SPLIT_NO_EMPTY,
+            ) ?: [];
+            Text::assertInputTokenCount(count($tokens));
+        }
 
         // derive uniform-case from tokens (same shape as the parser), never from
         // a whole-string letters() strip on multi-megabyte hostile rows

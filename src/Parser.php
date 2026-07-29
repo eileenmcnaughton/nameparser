@@ -20,10 +20,6 @@ class Parser
 {
     private const string COMMA_PLACEHOLDER = "\x00";
 
-    private const int MAX_INPUT_BYTES = 1024 * 1024;
-
-    private const int MAX_INPUT_TOKENS = 65536;
-
     protected string $whitespace = " \r\n\t";
 
     /**
@@ -866,6 +862,10 @@ class Parser
                     $mapper->matchesSinglePart(),
                     $mapper->getReservedParts(),
                 );
+            } elseif ($mapper instanceof LastnameMapper) {
+                $this->mappers[$i] = new LastnameMapper($this->getPrefixes());
+            } elseif ($mapper instanceof MiddlenameMapper) {
+                $this->mappers[$i] = new MiddlenameMapper(false, $this->getPrefixes());
             }
         }
     }
@@ -1018,7 +1018,7 @@ class Parser
 
             for ($i = 0; $i + $len <= $total; $i++) {
                 if ($this->charsMatchAt($chars, $i, $quoteChars)
-                    && ($i + $len === $total || $chars[$i + $len] === ' ')) {
+                    && $this->isStructuralTokenBoundary($chars[$i + $len] ?? null)) {
                     $symmetricEnds[$quote][] = $i;
                 }
             }
@@ -1041,7 +1041,8 @@ class Parser
                 $closerLen = count($closerChars);
 
                 if ($this->charsMatchAt($chars, $i, $closerChars)
-                    && (! $isSymmetric || $i + $closerLen === $total || $chars[$i + $closerLen] === ' ')) {
+                    && (! $isSymmetric
+                        || $this->isStructuralTokenBoundary($chars[$i + $closerLen] ?? null))) {
                     array_pop($closers);
                     if ($isSymmetric) {
                         array_pop($openQuotes);
@@ -1064,7 +1065,7 @@ class Parser
                 $openLen = count($openChars);
 
                 if ($isSymmetric) {
-                    $atTokenStart = $i === 0 || $chars[$i - 1] === ' ';
+                    $atTokenStart = $this->isStructuralTokenBoundary($chars[$i - 1] ?? null);
                     $hasCloser = false;
                     foreach ($symmetricEnds[$close] ?? [] as $end) {
                         if ($end >= $i + $openLen) {
@@ -1123,27 +1124,32 @@ class Parser
         return true;
     }
 
+    private function isStructuralTokenBoundary(?string $char): bool
+    {
+        return $char === null || $char === ' ' || $char === ',';
+    }
+
     private function assertInputByteBudget(string $name): void
     {
-        if (strlen($name) > self::MAX_INPUT_BYTES) {
-            throw new \LengthException(
-                'Name input exceeds the ' . self::MAX_INPUT_BYTES . '-byte limit.',
-            );
-        }
+        Text::assertInputByteBudget($name);
     }
 
     private function assertInputTokenBudget(string $name): void
     {
-        if ($name === '' || substr_count($name, ' ') < self::MAX_INPUT_TOKENS) {
+        // Exceeding N non-empty tokens needs at least N one-byte tokens and N-1
+        // one-byte separators. Normal names cannot reach the token ceiling, so
+        // avoid scanning them a second time.
+        if (strlen($name) < (Text::MAX_INPUT_TOKENS * 2) + 1) {
             return;
         }
 
+        $budgetInput = $this->maskDelimitedCommas($name);
         $tokens = 0;
         $insideToken = false;
-        $length = strlen($name);
+        $length = strlen($budgetInput);
 
         for ($i = 0; $i < $length; $i++) {
-            if ($name[$i] === ' ') {
+            if ($budgetInput[$i] === ' ' || $budgetInput[$i] === ',') {
                 $insideToken = false;
 
                 continue;
@@ -1156,11 +1162,7 @@ class Parser
             $insideToken = true;
             $tokens++;
 
-            if ($tokens > self::MAX_INPUT_TOKENS) {
-                throw new \LengthException(
-                    'Name input exceeds the ' . self::MAX_INPUT_TOKENS . '-token limit.',
-                );
-            }
+            Text::assertInputTokenCount($tokens);
         }
     }
 

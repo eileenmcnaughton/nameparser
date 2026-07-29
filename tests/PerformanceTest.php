@@ -29,6 +29,16 @@ class PerformanceTest extends TestCase
         );
     }
 
+    public function testJointSalutationValidationRemainsLinearAtBatchScale(): void
+    {
+        $this->assertLinearScaling(
+            static fn(int $size): string => str_repeat('Mr. and ', $size) . 'Mrs. Brad Smith',
+            false,
+            2000,
+            4000,
+        );
+    }
+
     public function testSurnameFirstSalutationPeelingRemainsLinearAtBatchScale(): void
     {
         $this->assertLinearScaling(
@@ -71,13 +81,31 @@ class PerformanceTest extends TestCase
         (new Parser())->parse(str_repeat('A ', self::MAX_INPUT_TOKENS) . 'A');
     }
 
+    public function testAcceptsExactCommaTokenBudget(): void
+    {
+        $input = str_repeat('A,', self::MAX_INPUT_TOKENS - 1) . 'A';
+
+        $this->assertSame($input, (new Parser())->parse($input)->getSource());
+    }
+
+    public function testRejectsInputOverCommaTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        (new Parser())->parse(str_repeat('A,', self::MAX_INPUT_TOKENS) . 'A');
+    }
+
     /**
      * @param  callable(int): string  $input
      */
-    private function assertLinearScaling(callable $input, bool $surnameFirst = false): void
-    {
-        $small = $this->parseSeconds($input(16000), $surnameFirst);
-        $large = $this->parseSeconds($input(32000), $surnameFirst);
+    private function assertLinearScaling(
+        callable $input,
+        bool $surnameFirst = false,
+        int $smallSize = 16000,
+        int $largeSize = 32000,
+    ): void {
+        $small = $this->parseSeconds($input($smallSize), $surnameFirst);
+        $large = $this->parseSeconds($input($largeSize), $surnameFirst);
 
         $this->assertLessThan(self::MAX_SECONDS, $large);
         $this->assertLessThan(

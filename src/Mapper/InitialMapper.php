@@ -15,6 +15,8 @@ class InitialMapper extends AbstractMapper
 {
     public const int MAX_COMBINED = 64;
 
+    private const int MAX_COMBINED_EXPANSION_PARTS = Text::MAX_INPUT_TOKENS * 2;
+
     private ?bool $uniformUpperOverride = null;
 
     public function __construct(
@@ -66,6 +68,7 @@ class InitialMapper extends AbstractMapper
         $splitCombined = ! $this->isUniformUpperContext($parts, $this->uniformUpperOverride);
 
         $mapped = [];
+        $expandedParts = 0;
 
         foreach ($parts as $k => $part) {
             if ($part instanceof AbstractPart) {
@@ -93,6 +96,15 @@ class InitialMapper extends AbstractMapper
                     && $length <= $this->combinedMax
                     && $stripped !== mb_strtolower($stripped, 'UTF-8')
                 ) {
+                    $expandedParts += $length;
+                    if ($expandedParts > self::MAX_COMBINED_EXPANSION_PARTS) {
+                        throw new \LengthException(
+                            'Combined initial expansion exceeds the '
+                            . self::MAX_COMBINED_EXPANSION_PARTS
+                            . '-part limit.',
+                        );
+                    }
+
                     foreach (Text::graphemes($stripped) as $initial) {
                         $mapped[] = $this->isInitial($initial) ? new Initial($initial) : $initial;
                     }

@@ -8,6 +8,10 @@ use PHPUnit\Framework\TestCase;
 
 class ConfidenceTest extends TestCase
 {
+    private const int MAX_INPUT_BYTES = 1024 * 1024;
+
+    private const int MAX_INPUT_TOKENS = 65536;
+
     /**
      * @return array<string, array{string}>
      */
@@ -131,6 +135,40 @@ class ConfidenceTest extends TestCase
         $this->assertSame(
             ["'Lord' could be a name or a salutation; nothing in the input decides it"],
             $result['notes'],
+        );
+    }
+
+    public function testStandaloneAssessmentRejectsInputOverByteBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(str_repeat('A', self::MAX_INPUT_BYTES + 1));
+    }
+
+    public function testStandaloneAssessmentRejectsInputOverTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(str_repeat('A ', self::MAX_INPUT_TOKENS) . 'A');
+    }
+
+    public function testSuppliedTokensDoNotBypassByteBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(
+            str_repeat('A', self::MAX_INPUT_BYTES + 1),
+            tokens: ['John', 'Smith'],
+        );
+    }
+
+    public function testSuppliedTokensDoNotBypassTokenBudget(): void
+    {
+        $this->expectException(\LengthException::class);
+
+        Confidence::assess(
+            'John Smith',
+            tokens: array_fill(0, self::MAX_INPUT_TOKENS + 1, 'A'),
         );
     }
 }
