@@ -90,7 +90,7 @@ $name->getFullName();     // "Jane A. Doe"
 
 Beyond the example above, `Name` also exposes `getMiddlename()`, `getNickname()`,
 `getLastnamePrefix()`, `getGivenName()`, `getAll()`, `toArray()`,
-`getSalutations()`, `isJoint()`, `getConfidence()`, and `getSource()`. `getLastname(true)` returns the surname
+`getSalutations()`, `isJoint()`, `getPartner()`, `getConfidence()`, and `getSource()`. `getLastname(true)` returns the surname
 without any particle prefix; the default `getLastname()` already includes
 prefixes.
 
@@ -141,6 +141,22 @@ The partner shares the surname, not the given name. Stacked titles address one
 person and stay in one entry (`Rev. Dr John Doe` gives `['Rev. Dr.']`), and a
 name with no honorific gives an empty list. `Mr. & Mrs.` normalizes to the same
 value as `Mr. and Mrs.`.
+
+`getPartner()` hands back that second person as a `Name` instead, so you can read
+the parts you need rather than assembling them:
+
+```php
+$partner = $name->getPartner();     // Name, or null when isJoint() is false
+
+$partner->getSalutation();          // "Mrs."
+$partner->getLastname();            // "Smith"
+$partner->getFirstname();           // "", Brad's given name is not hers
+(string) $partner;                  // "Mrs. Smith"
+```
+
+A particle surname crosses over whole (`Mr. and Mrs. van der Berg` gives a
+partner with `van der Berg`), while the given name, initials and any credential
+stay with the person actually named.
 
 Only the title-anchored form is detected. A bare `Brad and Jane Smith` has no
 honorific for the connector to attach to and reports `isJoint() === false`.

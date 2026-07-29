@@ -3,6 +3,7 @@
 namespace Tests\Iliaal\NameParser;
 
 use Iliaal\NameParser\Parser;
+use Iliaal\NameParser\Part\Lastname;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -148,6 +149,109 @@ class JointSalutationTest extends TestCase
         $this->assertTrue($name->isJoint());
         $this->assertSame('Mr.', $salutations[0]);
         $this->assertSame('Mrs. Smith', $salutations[1] . ' ' . $name->getLastname());
+    }
+
+    /**
+     * the second addressee comes back as a Name carrying her title and the
+     * shared surname, so the caller renders "Mrs. Smith" or "Mrs. Brad Smith"
+     * to its own taste
+     */
+    #[DataProvider('partnerProvider')]
+    public function testGetPartner(string $input, ?string $salutation, ?string $lastname): void
+    {
+        $partner = (new Parser())->parse($input)->getPartner();
+
+        if ($salutation === null) {
+            $this->assertNull($partner, "partner for '$input'");
+
+            return;
+        }
+
+        $this->assertNotNull($partner, "partner for '$input'");
+        $this->assertSame($salutation, $partner->getSalutation(), "partner salutation for '$input'");
+        $this->assertSame($lastname, $partner->getLastname(), "partner lastname for '$input'");
+    }
+
+    /**
+     * @return array<string, array{string, ?string, ?string}>
+     */
+    public static function partnerProvider(): array
+    {
+        return [
+            // input, partner salutation, partner lastname (null salutation = no partner)
+            'and spelled out'    => ['Mr. and Mrs. Brad Smith', 'Mrs.', 'Smith'],
+            'ampersand'          => ['Mr. & Mrs. Brad Smith', 'Mrs.', 'Smith'],
+            'no periods'         => ['Mr and Mrs Brad Smith', 'Mrs.', 'Smith'],
+            'uppercase input'    => ['MR. AND MRS. BRAD SMITH', 'Mrs.', 'Smith'],
+            'two doctors'        => ['Dr. & Dr. Chen', 'Dr.', 'Chen'],
+            'mixed titles'       => ['Dr. and Mrs. Brad Smith', 'Mrs.', 'Smith'],
+            'comma form'         => ['Mr. and Mrs. Smith, Brad', 'Mrs.', 'Smith'],
+            'surname only'       => ['Mr. and Mrs. Smith', 'Mrs.', 'Smith'],
+
+            // the particle belongs to the shared surname
+            'prefix surname'     => ['Mr. and Mrs. van der Berg', 'Mrs.', 'van der Berg'],
+
+            // a stacked honorific addresses the first person, so only the
+            // second group crosses over
+            'stacked and joint'  => ['Rev. Dr. and Mrs. John Doe', 'Mrs.', 'Doe'],
+
+            'single title'       => ['Mr. Brad Smith', null, null],
+            'no honorific'       => ['Brad Smith', null, null],
+            'unabsorbed and'     => ['Mr. and Brad Smith', null, null],
+            'bare two givens'    => ['Brad and Jane Smith', null, null],
+        ];
+    }
+
+    /**
+     * the given name and any credential belong to the person actually named,
+     * so neither follows the partner
+     */
+    public function testPartnerCarriesNoGivenNameOrSuffix(): void
+    {
+        $partner = (new Parser())->parse('Mr. and Mrs. Brad J. Smith Jr')->getPartner();
+
+        $this->assertNotNull($partner);
+        $this->assertSame('', $partner->getFirstname());
+        $this->assertSame('', $partner->getInitials());
+        $this->assertSame('', $partner->getMiddlename());
+        $this->assertSame('', $partner->getSuffix());
+        $this->assertSame('Smith', $partner->getFullName());
+        $this->assertSame('Mrs. Smith', (string) $partner);
+    }
+
+    /**
+     * the partner is one person, so she carries a single-entry salutation list
+     * and no connector of her own
+     */
+    public function testPartnerIsNotItselfJoint(): void
+    {
+        $partner = (new Parser())->parse('Mr. and Mrs. Brad Smith')->getPartner();
+
+        $this->assertNotNull($partner);
+        $this->assertFalse($partner->isJoint());
+        $this->assertSame(['Mrs.'], $partner->getSalutations());
+        $this->assertNull($partner->getPartner());
+    }
+
+    /**
+     * parts are cloned into the partner, so writing through one Name cannot
+     * reach into the other
+     */
+    public function testPartnerDoesNotShareMutablePartsWithTheSource(): void
+    {
+        $name = (new Parser())->parse('Mr. and Mrs. Brad Smith');
+        $partner = $name->getPartner();
+
+        $this->assertNotNull($partner);
+
+        foreach ($partner->getParts() as $part) {
+            if ($part instanceof Lastname) {
+                $part->setValue('Jones');
+            }
+        }
+
+        $this->assertSame('Jones', $partner->getLastname());
+        $this->assertSame('Smith', $name->getLastname());
     }
 
     /**

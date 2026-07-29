@@ -3,6 +3,7 @@
 namespace Iliaal\NameParser;
 
 use Iliaal\NameParser\Part\AbstractPart;
+use Iliaal\NameParser\Part\Lastname;
 use Iliaal\NameParser\Part\Salutation;
 use Iliaal\NameParser\Part\SalutationConnector;
 
@@ -260,6 +261,66 @@ class Name
      */
     public function getSalutations(): array
     {
+        return array_map(
+            static function (array $group): string {
+                $values = array_map(
+                    static fn(Salutation $part): string => $part->normalize(),
+                    $group,
+                );
+
+                return implode(' ', $values);
+            },
+            $this->getSalutationGroups(),
+        );
+    }
+
+    /**
+     * the second person a joint honorific addresses ("Mr. and Mrs. Brad Smith"
+     * gives Mrs. Smith), or null when the honorific covers one person. The
+     * partner shares the surname but has no given name of her own, since the
+     * parsed first name belongs to the person actually named.
+     *
+     * A Name rather than a rendered string, so the caller decides between
+     * "Mrs. Smith" and "Mrs. Brad Smith". Titles beyond the second addressee
+     * are not reachable this way; a joint honorific in practice names two.
+     */
+    public function getPartner(): ?Name
+    {
+        $groups = $this->getSalutationGroups();
+
+        // groups only split at a connector, so a second group is exactly the
+        // condition isJoint() reports
+        if (count($groups) < 2) {
+            return null;
+        }
+
+        $parts = [];
+
+        foreach ($groups[1] as $salutation) {
+            $parts[] = clone $salutation;
+        }
+
+        // LastnamePrefix extends Lastname, so a particle surname comes across
+        // whole and in order ("van der Berg")
+        foreach ($this->parts as $part) {
+            if ($part instanceof Lastname) {
+                $parts[] = clone $part;
+            }
+        }
+
+        return new Name($parts, $this->confidenceSuffixes);
+    }
+
+    /**
+     * the salutation parts grouped at connector boundaries, one group per
+     * person addressed. Parts that normalize to an empty string are dropped for
+     * the same reason export() drops them, and a group left empty by that is
+     * dropped with them.
+     *
+     * @return list<list<Salutation>>
+     */
+    private function getSalutationGroups(): array
+    {
         $groups = [];
         $current = [];
 
@@ -270,23 +331,20 @@ class Name
 
             if ($part instanceof SalutationConnector) {
                 if ($current !== []) {
-                    $groups[] = implode(' ', $current);
+                    $groups[] = $current;
                     $current = [];
                 }
 
                 continue;
             }
 
-            $normalized = $part->normalize();
-            // skip empties for the same reason export() does: a blank token
-            // must not become a stray space inside a group
-            if ($normalized !== '') {
-                $current[] = $normalized;
+            if ($part->normalize() !== '') {
+                $current[] = $part;
             }
         }
 
         if ($current !== []) {
-            $groups[] = implode(' ', $current);
+            $groups[] = $current;
         }
 
         return $groups;
